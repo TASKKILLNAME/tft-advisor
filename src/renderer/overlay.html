@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TFT Advisor</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Segoe UI', 'Malgun Gothic', sans-serif;
+      background: transparent;
+      color: #e8e0d0;
+      user-select: none;
+      overflow: hidden;
+    }
+
+    #app {
+      width: 370px;
+      background: rgba(10, 12, 20, 0.88);
+      border: 1px solid rgba(200, 170, 100, 0.4);
+      border-radius: 8px;
+      backdrop-filter: blur(8px);
+      overflow: hidden;
+    }
+
+    /* 헤더 */
+    #header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 12px;
+      background: rgba(200, 170, 100, 0.15);
+      border-bottom: 1px solid rgba(200, 170, 100, 0.3);
+      cursor: move;
+      -webkit-app-region: drag;
+    }
+
+    #header .title {
+      font-size: 13px;
+      font-weight: 700;
+      color: #c8aa64;
+      letter-spacing: 1px;
+    }
+
+    #header .controls {
+      display: flex;
+      gap: 6px;
+      -webkit-app-region: no-drag;
+    }
+
+    .btn-icon {
+      background: none;
+      border: 1px solid rgba(200, 170, 100, 0.3);
+      color: #c8aa64;
+      width: 22px;
+      height: 22px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 11px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.2s;
+    }
+
+    .btn-icon:hover { background: rgba(200, 170, 100, 0.2); }
+
+    /* 상태 바 */
+    #status-bar {
+      padding: 6px 12px;
+      font-size: 11px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      border-bottom: 1px solid rgba(255,255,255,0.07);
+    }
+
+    .status-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .status-dot.idle { background: #888; animation: pulse 2s infinite; }
+    .status-dot.success { background: #4caf50; }
+    .status-dot.error { background: #f44336; }
+    .status-dot.active { background: #c8aa64; animation: pulse 1.5s infinite; }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+
+    /* 탭 네비게이션 */
+    #tabs {
+      display: flex;
+      background: rgba(0,0,0,0.3);
+      border-bottom: 1px solid rgba(200, 170, 100, 0.2);
+    }
+
+    .tab {
+      flex: 1;
+      padding: 6px 4px;
+      text-align: center;
+      cursor: pointer;
+      font-size: 11px;
+      color: #888;
+      transition: all 0.2s;
+      border-bottom: 2px solid transparent;
+    }
+
+    .tab:hover { color: #c8aa64; background: rgba(200, 170, 100, 0.05); }
+
+    .tab.active {
+      color: #c8aa64;
+      border-bottom-color: #c8aa64;
+      background: rgba(200, 170, 100, 0.08);
+    }
+
+    /* 탭 컨텐츠 */
+    #content {
+      max-height: 620px;
+      overflow-y: auto;
+      scrollbar-width: thin;
+      scrollbar-color: rgba(200, 170, 100, 0.3) transparent;
+    }
+
+    #content::-webkit-scrollbar { width: 4px; }
+    #content::-webkit-scrollbar-track { background: transparent; }
+    #content::-webkit-scrollbar-thumb { background: rgba(200, 170, 100, 0.3); border-radius: 2px; }
+
+    .tab-content { display: none; padding: 10px; }
+    .tab-content.active { display: block; }
+
+    /* 섹션 카드 */
+    .section {
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 6px;
+      padding: 10px;
+      margin-bottom: 8px;
+    }
+
+    .section-title {
+      font-size: 11px;
+      font-weight: 700;
+      color: #c8aa64;
+      margin-bottom: 7px;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    /* 티어 배지 */
+    .tier-badge {
+      display: inline-block;
+      padding: 1px 6px;
+      border-radius: 3px;
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    .tier-S { background: rgba(255, 215, 0, 0.25); color: #ffd700; border: 1px solid rgba(255, 215, 0, 0.4); }
+    .tier-A { background: rgba(100, 200, 100, 0.2); color: #80e080; border: 1px solid rgba(100, 200, 100, 0.4); }
+    .tier-B { background: rgba(100, 150, 255, 0.2); color: #80a0ff; border: 1px solid rgba(100, 150, 255, 0.4); }
+    .tier-C { background: rgba(150, 150, 150, 0.2); color: #aaa; border: 1px solid rgba(150, 150, 150, 0.4); }
+
+    /* 조합 추천 */
+    .comp-card {
+      padding: 8px;
+      background: rgba(200, 170, 100, 0.07);
+      border: 1px solid rgba(200, 170, 100, 0.2);
+      border-radius: 5px;
+      margin-bottom: 6px;
+    }
+
+    .comp-name {
+      font-size: 13px;
+      font-weight: 700;
+      color: #e8e0d0;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 5px;
+    }
+
+    .comp-detail {
+      font-size: 11px;
+      color: #aaa;
+      line-height: 1.5;
+    }
+
+    .comp-detail span { color: #c8aa64; }
+
+    /* 증강 리스트 */
+    .augment-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 5px 8px;
+      background: rgba(255,255,255,0.03);
+      border-radius: 4px;
+      margin-bottom: 4px;
+      font-size: 11px;
+    }
+
+    /* 구매 우선순위 */
+    .buy-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      padding: 5px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+      font-size: 11px;
+      color: #ccc;
+    }
+
+    .buy-item:last-child { border-bottom: none; }
+
+    .priority-num {
+      width: 18px;
+      height: 18px;
+      background: rgba(200, 170, 100, 0.3);
+      color: #c8aa64;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 10px;
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+
+    /* 경제 이자 테이블 */
+    .interest-table {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 4px;
+      margin-top: 6px;
+    }
+
+    .interest-cell {
+      padding: 5px 3px;
+      text-align: center;
+      background: rgba(255,255,255,0.04);
+      border-radius: 4px;
+      font-size: 10px;
+    }
+
+    .interest-cell .gold { color: #ffd700; font-weight: 700; font-size: 12px; }
+    .interest-cell .int { color: #80ff80; font-size: 11px; }
+    .interest-cell.highlight { background: rgba(200, 170, 100, 0.15); border: 1px solid rgba(200, 170, 100, 0.4); }
+
+    /* 포지셔닝 그리드 */
+    .hex-board {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 3px;
+      padding: 6px;
+      background: rgba(0,0,0,0.3);
+      border-radius: 6px;
+      margin-top: 6px;
+    }
+
+    .hex-row { display: flex; gap: 3px; justify-content: center; margin: 1px 0; }
+
+    .hex {
+      width: 28px;
+      height: 28px;
+      background: rgba(255,255,255,0.07);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 9px;
+      color: #666;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .hex.frontline { background: rgba(100, 150, 255, 0.15); border-color: rgba(100, 150, 255, 0.3); color: #80a0ff; }
+    .hex.carry { background: rgba(255, 200, 50, 0.15); border-color: rgba(255, 200, 50, 0.4); color: #ffd700; }
+    .hex.support { background: rgba(100, 200, 100, 0.1); border-color: rgba(100, 200, 100, 0.25); color: #80e080; }
+
+    /* 알림 메시지 */
+    .alert {
+      padding: 6px 10px;
+      border-radius: 5px;
+      font-size: 11px;
+      margin-bottom: 6px;
+      display: flex;
+      align-items: flex-start;
+      gap: 6px;
+    }
+
+    .alert.warning { background: rgba(255, 160, 0, 0.15); border: 1px solid rgba(255, 160, 0, 0.3); color: #ffa040; }
+    .alert.info { background: rgba(100, 180, 255, 0.1); border: 1px solid rgba(100, 180, 255, 0.25); color: #80bfff; }
+    .alert.success { background: rgba(100, 200, 100, 0.1); border: 1px solid rgba(100, 200, 100, 0.25); color: #80e080; }
+
+    /* 게임 대기 화면 */
+    #idle-screen {
+      padding: 20px;
+      text-align: center;
+      color: #888;
+    }
+
+    #idle-screen .big-icon { font-size: 32px; margin-bottom: 10px; }
+    #idle-screen h3 { color: #c8aa64; font-size: 14px; margin-bottom: 8px; }
+    #idle-screen p { font-size: 11px; line-height: 1.6; }
+
+    /* 메타 패치 섹션 */
+    .meta-item {
+      padding: 5px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+      font-size: 11px;
+      color: #bbb;
+      line-height: 1.5;
+    }
+
+    .meta-item:last-child { border-bottom: none; }
+
+    .meta-item .label {
+      color: #c8aa64;
+      font-weight: 600;
+      font-size: 10px;
+      text-transform: uppercase;
+    }
+
+    /* 게임 중 상단 정보 */
+    #game-info {
+      display: flex;
+      gap: 8px;
+      padding: 8px 10px;
+      background: rgba(0,0,0,0.3);
+      border-bottom: 1px solid rgba(255,255,255,0.07);
+    }
+
+    .info-chip {
+      padding: 3px 8px;
+      background: rgba(200, 170, 100, 0.12);
+      border: 1px solid rgba(200, 170, 100, 0.25);
+      border-radius: 12px;
+      font-size: 11px;
+      color: #c8aa64;
+    }
+
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <!-- 헤더 -->
+    <div id="header">
+      <div class="title">⚔ TFT ADVISOR</div>
+      <div class="controls">
+        <button class="btn-icon" id="btn-meta" title="메타 분석">📊</button>
+        <button class="btn-icon" id="btn-opacity" title="투명도 조절">👁</button>
+        <button class="btn-icon" id="btn-minimize" title="최소화">−</button>
+      </div>
+    </div>
+
+    <!-- 상태 표시 -->
+    <div id="status-bar">
+      <div class="status-dot idle" id="status-dot"></div>
+      <span id="status-text">초기화 중...</span>
+    </div>
+
+    <!-- 게임 중 정보 바 -->
+    <div id="game-info" class="hidden">
+      <span class="info-chip" id="chip-stage">스테이지 -</span>
+      <span class="info-chip" id="chip-health">체력 -</span>
+      <span class="info-chip" id="chip-rank">순위 -</span>
+    </div>
+
+    <!-- 탭 네비게이션 -->
+    <div id="tabs">
+      <div class="tab active" data-tab="comp">조합</div>
+      <div class="tab" data-tab="economy">경제</div>
+      <div class="tab" data-tab="position">배치</div>
+      <div class="tab" data-tab="augment">증강</div>
+      <div class="tab" data-tab="meta">메타</div>
+    </div>
+
+    <!-- 컨텐츠 영역 -->
+    <div id="content">
+
+      <!-- 대기 화면 -->
+      <div id="idle-screen">
+        <div class="big-icon">🎮</div>
+        <h3>TFT 게임을 기다리는 중</h3>
+        <p>TFT 게임이 시작되면<br>실시간으로 조언을 제공합니다.</p>
+        <br>
+        <p style="color: #666; font-size: 10px;">10초마다 게임 상태 확인 중</p>
+      </div>
+
+      <!-- 조합 탭 -->
+      <div class="tab-content" id="tab-comp">
+        <div id="comp-recommendation" class="section">
+          <div class="section-title">🏆 추천 조합</div>
+          <div id="comp-content">데이터 로딩 중...</div>
+        </div>
+
+        <div id="buy-priority" class="section">
+          <div class="section-title">🛒 구매 우선순위</div>
+          <div id="buy-content">데이터 로딩 중...</div>
+        </div>
+      </div>
+
+      <!-- 경제 탭 -->
+      <div class="tab-content" id="tab-economy">
+        <div class="section">
+          <div class="section-title">💰 이자 가이드</div>
+          <div class="interest-table" id="interest-table"></div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">📈 현재 운영 조언</div>
+          <div id="economy-advice-content">데이터 로딩 중...</div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">📋 운영 방식 가이드</div>
+          <div id="economy-type-content"></div>
+        </div>
+      </div>
+
+      <!-- 배치 탭 -->
+      <div class="tab-content" id="tab-position">
+        <div class="section">
+          <div class="section-title">🗺 배치 가이드</div>
+          <div id="position-tip-content">데이터 로딩 중...</div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">📐 헥스 보드 예시</div>
+          <div id="hex-board-visual"></div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">💡 일반 팁</div>
+          <div id="position-tips-general"></div>
+        </div>
+      </div>
+
+      <!-- 증강 탭 -->
+      <div class="tab-content" id="tab-augment">
+        <div class="section">
+          <div class="section-title">✨ 현재 증강</div>
+          <div id="augment-current">증강 없음</div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">⭐ 증강 티어 가이드</div>
+          <div id="augment-tier-guide"></div>
+        </div>
+      </div>
+
+      <!-- 메타 탭 -->
+      <div class="tab-content" id="tab-meta">
+        <div class="section">
+          <div class="section-title">🔥 현재 메타</div>
+          <div id="meta-content">로딩 중...</div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">⚙ 설정</div>
+          <div style="font-size: 11px; color: #aaa; margin-bottom: 8px;">API 키 (24시간마다 갱신)</div>
+          <input type="text" id="api-key-input" placeholder="RGAPI-..." style="
+            width: 100%; padding: 6px 8px; background: rgba(255,255,255,0.07);
+            border: 1px solid rgba(200, 170, 100, 0.3); border-radius: 4px;
+            color: #e8e0d0; font-size: 11px; margin-bottom: 6px;
+          ">
+          <div style="font-size: 11px; color: #aaa; margin-bottom: 4px;">소환사명 # 태그</div>
+          <div style="display: flex; gap: 4px; margin-bottom: 6px;">
+            <input type="text" id="summoner-input" placeholder="소환사명" style="
+              flex: 2; padding: 6px 8px; background: rgba(255,255,255,0.07);
+              border: 1px solid rgba(200, 170, 100, 0.3); border-radius: 4px;
+              color: #e8e0d0; font-size: 11px;
+            ">
+            <input type="text" id="tagline-input" placeholder="KR1" style="
+              flex: 1; padding: 6px 8px; background: rgba(255,255,255,0.07);
+              border: 1px solid rgba(200, 170, 100, 0.3); border-radius: 4px;
+              color: #e8e0d0; font-size: 11px;
+            ">
+          </div>
+          <button id="save-settings-btn" style="
+            width: 100%; padding: 7px; background: rgba(200, 170, 100, 0.2);
+            border: 1px solid rgba(200, 170, 100, 0.5); border-radius: 4px;
+            color: #c8aa64; font-size: 12px; cursor: pointer;
+          ">저장 및 적용</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <script src="overlay.js"></script>
+</body>
+</html>

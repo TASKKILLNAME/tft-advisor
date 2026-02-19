@@ -1,0 +1,306 @@
+const { META_COMPS, AUGMENT_TIERS, UNIT_COSTS, POSITIONING_GUIDE, ECONOMY_GUIDE } = require('../tftData');
+
+class GameAnalyzer {
+  constructor(riotApi) {
+    this.riotApi = riotApi;
+    this.setData = null;
+  }
+
+  async loadSetData() {
+    if (!this.setData) {
+      try {
+        this.setData = await this.riotApi.getTFTSetData();
+      } catch (e) {
+        console.warn('세트 데이터 로드 실패, 로컬 데이터 사용');
+      }
+    }
+  }
+
+  // 현재 활성 게임 분석
+  async analyzeActiveGame(gameData, myPuuid) {
+    await this.loadSetData();
+
+    const myParticipant = gameData.participants?.find(p => p.puuid === myPuuid);
+
+    if (!myParticipant) {
+      return { error: '참가자 데이터를 찾을 수 없습니다' };
+    }
+
+    const stage = this.parseStage(gameData);
+    const myUnits = myParticipant.traits || [];
+    const myGold = myParticipant.augments || [];
+
+    return {
+      timestamp: Date.now(),
+      stage,
+      summary: this.buildSummary(gameData, myParticipant, stage),
+      augmentAdvice: this.analyzeAugments(myParticipant.augments || []),
+      compRecommendation: this.recommendComp(myParticipant, stage),
+      economyAdvice: this.getEconomyAdvice(myParticipant, stage),
+      positioningTip: this.getPositioningTip(myParticipant),
+      buyPriority: this.getBuyPriority(myParticipant, stage),
+      itemSuggestion: this.getItemSuggestion(myParticipant, stage)
+    };
+  }
+
+  parseStage(gameData) {
+    const gameLength = gameData.gameLength || 0;
+    // 게임 길이로 스테이지 추정 (대략적)
+    if (gameLength < 120) return '1-1';
+    if (gameLength < 240) return '2-1';
+    if (gameLength < 420) return '3-1';
+    if (gameLength < 660) return '4-1';
+    if (gameLength < 900) return '5-1';
+    return '6-1+';
+  }
+
+  buildSummary(gameData, myParticipant, stage) {
+    const participants = gameData.participants || [];
+    const myHealth = myParticipant.health || 100;
+    const avgHealth = participants.reduce((acc, p) => acc + (p.health || 0), 0) / participants.length;
+
+    return {
+      stage,
+      myHealth,
+      avgHealth: Math.round(avgHealth),
+      playersAlive: participants.filter(p => (p.health || 0) > 0).length,
+      myRank: participants
+        .filter(p => (p.health || 0) > 0)
+        .sort((a, b) => (b.health || 0) - (a.health || 0))
+        .findIndex(p => p.puuid === myParticipant.puuid) + 1
+    };
+  }
+
+  analyzeAugments(augments) {
+    if (!augments || augments.length === 0) {
+      return {
+        current: [],
+        advice: '아직 증강이 없습니다. 첫 증강 선택 시 S티어 우선!'
+      };
+    }
+
+    const tierMap = {};
+    Object.entries(AUGMENT_TIERS).forEach(([tier, names]) => {
+      names.forEach(name => { tierMap[name] = tier; });
+    });
+
+    const analyzedAugments = augments.map(aug => ({
+      name: aug,
+      tier: tierMap[aug] || '?',
+      synergy: this.getAugmentSynergy(aug)
+    }));
+
+    const hasSAug = analyzedAugments.some(a => a.tier === 'S');
+
+    return {
+      current: analyzedAugments,
+      advice: hasSAug
+        ? `S티어 증강 보유! 해당 증강 시너지 조합을 우선 구성하세요.`
+        : `현재 증강에 맞는 조합을 선택하거나, 다음 증강에서 S티어를 노리세요.`,
+      nextAugmentTip: '다음 증강 시 현재 조합과 시너지 있는 것 선택'
+    };
+  }
+
+  getAugmentSynergy(augName) {
+    const synergyMap = {
+      '마법사의 관': '마법사 조합 강화',
+      '스나이퍼의 초점': '저격수 조합 강화',
+      '선혈 브루저': '브루저 조합 강화',
+      '요들 영혼': '요들 조합 강화',
+      '이자 소득': '경제 운영 보조',
+      '황금 티켓': '경제 운영 보조'
+    };
+    return synergyMap[augName] || '범용';
+  }
+
+  recommendComp(participant, stage) {
+    const currentTraits = participant.traits || [];
+
+    // 현재 시너지 분석
+    const activeTraits = currentTraits
+      .filter(t => t.tier_current > 0)
+      .map(t => t.name);
+
+    // 가장 잘 맞는 메타 조합 찾기
+    const scored = META_COMPS.map(comp => {
+      let score = 0;
+
+      // 현재 유닛이 추천 조합과 겹치는 정도
+      const overlap = activeTraits.filter(t =>
+        comp.synergies.some(s => s.includes(t))
+      ).length;
+
+      score += overlap * 30;
+
+      // 티어 점수
+      const tierScore = { S: 100, A: 70, B: 40, C: 10 };
+      score += tierScore[comp.tier] || 0;
+
+      return { ...comp, matchScore: score, traitOverlap: overlap };
+    });
+
+    scored.sort((a, b) => b.matchScore - a.matchScore);
+
+    const top3 = scored.slice(0, 3);
+
+    return {
+      recommended: top3[0],
+      alternatives: top3.slice(1),
+      reasoning: this.buildCompReasoning(top3[0], activeTraits, stage)
+    };
+  }
+
+  buildCompReasoning(comp, activeTraits, stage) {
+    if (!comp) return '조합을 결정하기 어렵습니다.';
+
+    const reasons = [];
+
+    if (comp.matchScore > 80) {
+      reasons.push(`현재 유닛이 ${comp.name}과 잘 맞습니다 (${comp.traitOverlap}개 시너지 겹침)`);
+    }
+
+    if (comp.tier === 'S') {
+      reasons.push('현재 패치 S티어 조합입니다');
+    }
+
+    const stageNum = parseFloat(stage.replace('-', '.'));
+    if (stageNum >= 3 && comp.economy.includes('하이퍼롤')) {
+      reasons.push(`주의: ${stage} 단계에서 하이퍼롤은 늦을 수 있습니다`);
+    }
+
+    return reasons.join(' | ') || `${comp.name} 조합으로 방향을 잡으세요`;
+  }
+
+  getEconomyAdvice(participant, stage) {
+    // Spectator API에는 골드 정보가 제한적 - 스테이지 기반 조언
+    const stageNum = parseFloat(stage.replace('-', '.'));
+
+    const advice = [];
+
+    if (stageNum <= 2.5) {
+      advice.push('초반: 50골드 이자 유지가 최우선');
+      advice.push('연승/연패 가능하면 최대한 유지');
+    } else if (stageNum <= 3.5) {
+      advice.push('중반: 조합 방향에 따라 운영 결정');
+      advice.push('하이퍼롤: 지금 롤다운 시작');
+      advice.push('빠른 레벨업: 골드 저장 후 레벨 7 강행');
+    } else if (stageNum <= 4.5) {
+      advice.push('후반: 레벨 8 목표 (4코스트 탐색)');
+      advice.push('체력 30 이하면 레벨업/롤보다 생존 우선');
+    } else {
+      advice.push('후반: 레벨 9 여부 결정 (5코스트 목표)');
+      advice.push('체력 관리가 최우선');
+    }
+
+    return {
+      stage,
+      advice,
+      interestGuide: this.getInterestGuide()
+    };
+  }
+
+  getInterestGuide() {
+    return [
+      { gold: 10, interest: 1 },
+      { gold: 20, interest: 2 },
+      { gold: 30, interest: 3 },
+      { gold: 40, interest: 4 },
+      { gold: 50, interest: 5, note: '최대 이자 (50골드 유지!)' }
+    ];
+  }
+
+  getBuyPriority(participant, stage) {
+    const currentTraits = participant.traits || [];
+    const stageNum = parseFloat(stage.replace('-', '.'));
+
+    const advice = [];
+
+    // 스테이지별 구매 우선순위
+    if (stageNum <= 2.5) {
+      advice.push({ priority: 1, text: '1~2코스트 핵심 기물 3성 목표' });
+      advice.push({ priority: 2, text: '시너지 완성에 필요한 기물 구매' });
+    } else if (stageNum <= 3.5) {
+      advice.push({ priority: 1, text: '조합 확정 후 필요 기물만 구매' });
+      advice.push({ priority: 2, text: '3코스트 메인 캐리 탐색' });
+    } else {
+      advice.push({ priority: 1, text: '4코스트 캐리 확보' });
+      advice.push({ priority: 2, text: '전선 기물 보충 (탱커)' });
+      advice.push({ priority: 3, text: '중복 기물 파괴 → 아이템 재활용' });
+    }
+
+    // 현재 활성 시너지 기반 추가 조언
+    const activeTraits = currentTraits
+      .filter(t => t.tier_current > 0)
+      .map(t => t.name);
+
+    if (activeTraits.length > 0) {
+      advice.push({
+        priority: 1,
+        text: `현재 시너지 (${activeTraits.slice(0, 3).join(', ')}) 완성에 필요한 기물 탐색`
+      });
+    }
+
+    return advice;
+  }
+
+  getItemSuggestion(participant, stage) {
+    const currentTraits = participant.traits || [];
+    const activeTraits = currentTraits.filter(t => t.tier_current > 0).map(t => t.name);
+    const stageNum = parseFloat((stage || '2-1').replace('-', '.'));
+
+    const suggestions = [];
+
+    // 시너지 기반 아이템 추천
+    if (activeTraits.includes('마법사')) {
+      suggestions.push({ item: '라바돈의 죽음모자', reason: '마법사 AP 극대화' });
+      suggestions.push({ item: '모렐로노미콘', reason: '마법사 화상 + AP' });
+    }
+    if (activeTraits.includes('저격수')) {
+      suggestions.push({ item: '무한의 검', reason: '저격수 치명타 극대화' });
+      suggestions.push({ item: '최후의 속삭임', reason: '방어구 관통' });
+    }
+    if (activeTraits.includes('브루저') || activeTraits.includes('전사')) {
+      suggestions.push({ item: '선혈갑옷', reason: '탱커 지속력' });
+      suggestions.push({ item: '가고일의 돌갑옷', reason: '탱커 방어력 극대화' });
+    }
+
+    // 스테이지별 범용 조언
+    if (stageNum <= 2.5) {
+      suggestions.push({ item: '스파타의 검 / BF 검', reason: '초반 임시 아이템 보유' });
+    } else {
+      suggestions.push({ item: '스태틱의 단검', reason: '캐리 공속 보조' });
+    }
+
+    return suggestions.slice(0, 3);
+  }
+
+  getPositioningTip(participant) {
+    const currentTraits = participant.traits || [];
+    const activeTraits = currentTraits.filter(t => t.tier_current > 0).map(t => t.name);
+
+    // 시너지에 맞는 포지셔닝 가이드 반환
+    let posType = 'backline';
+
+    if (activeTraits.some(t => ['브루저', '전사', '수호자'].includes(t))) {
+      posType = 'frontline_heavy';
+    } else if (activeTraits.some(t => ['저격수', '마법사'].includes(t))) {
+      posType = 'corner_backline';
+    } else if (activeTraits.some(t => ['요들'].includes(t))) {
+      posType = 'spread';
+    }
+
+    const guide = POSITIONING_GUIDE[posType];
+
+    return {
+      type: posType,
+      ...guide,
+      generalTips: [
+        '어쌔신 상대: 캐리를 반대편 코너로 이동',
+        '광역기 상대: 기물 간격 벌리기',
+        '초반 아이템 탱커: 3번 또는 7번 헥스'
+      ]
+    };
+  }
+}
+
+module.exports = GameAnalyzer;

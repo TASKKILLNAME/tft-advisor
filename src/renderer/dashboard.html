@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>TFT Advisor - 대시보드</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', 'Malgun Gothic', sans-serif;
+      background: #0a0e1a;
+      color: #e8e0d0;
+      padding: 20px;
+    }
+    h1 { color: #c8aa64; margin-bottom: 20px; }
+    .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+    .card {
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(200, 170, 100, 0.2);
+      border-radius: 8px;
+      padding: 16px;
+    }
+    .card h3 { color: #c8aa64; font-size: 13px; margin-bottom: 10px; }
+    pre { font-size: 11px; color: #aaa; white-space: pre-wrap; line-height: 1.6; }
+  </style>
+</head>
+<body>
+  <h1>⚔ TFT Advisor 대시보드</h1>
+  <div class="grid">
+    <div class="card">
+      <h3>현재 게임 분석</h3>
+      <pre id="game-data">게임 데이터 없음</pre>
+    </div>
+    <div class="card">
+      <h3>추천 조합</h3>
+      <pre id="comp-data">데이터 없음</pre>
+    </div>
+    <div class="card">
+      <h3>경제 조언</h3>
+      <pre id="economy-data">데이터 없음</pre>
+    </div>
+    <div class="card">
+      <h3>상태</h3>
+      <pre id="status-data">대기 중</pre>
+    </div>
+  </div>
+  <script>
+    const { ipcRenderer } = require('electron');
+    ipcRenderer.on('update', (e, data) => {
+      document.getElementById('game-data').textContent = JSON.stringify(data.summary, null, 2);
+      document.getElementById('comp-data').textContent =
+        data.compRecommendation?.recommended
+          ? `${data.compRecommendation.recommended.name} (${data.compRecommendation.recommended.tier}티어)\n` +
+            `핵심: ${data.compRecommendation.recommended.keyUnits?.join(', ')}\n` +
+            data.compRecommendation.reasoning
+          : '없음';
+      document.getElementById('economy-data').textContent =
+        data.economyAdvice?.advice?.join('\n') || '없음';
+    });
+    ipcRenderer.on('status', (e, data) => {
+      document.getElementById('status-data').textContent = `[${data.type}] ${data.message}`;
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,75 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - 'v*'   # v1.0.0 형태의 태그 푸시시 자동 빌드
+  workflow_dispatch:  # 수동 실행도 가능
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Windows installer
+        run: npm run build:win
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-build
+          path: dist/*.exe
+
+  release:
+    needs: build-windows
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-build
+          path: dist/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.exe
+          body: |
+            ## TFT Advisor ${{ github.ref_name }}
+
+            ### 설치 방법
+            1. `TFT-Advisor-Setup-*.exe` 다운로드
+            2. 설치 후 실행
+            3. **메타 탭 > 설정**에서 아래 입력:
+               - Riot API 키: [developer.riotgames.com](https://developer.riotgames.com) 에서 발급 (무료)
+               - 소환사명 + 태그라인 (예: 소환사명 / KR1)
+            4. TFT 게임 시작 시 자동으로 분석 시작!
+
+            ### 기능
+            - 실시간 조합 추천 (S/A/B 티어)
+            - 증강 티어 안내
+            - 경제 운영 가이드 (이자/하이퍼롤/슬로우롤)
+            - 배치 헥스 보드 시각화
+            - 패치 메타 분석
+
+            ### Vanguard 안전 여부
+            ✅ Riot 공식 API + 화면 캡처만 사용 (메모리 읽기 없음)
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

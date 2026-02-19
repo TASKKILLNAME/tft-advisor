@@ -1,0 +1,74 @@
+{
+  "name": "tft-advisor",
+  "version": "1.0.0",
+  "description": "TFT 실시간 보조 프로그램 (Vanguard 안전)",
+  "main": "src/main/index.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "build": "electron-builder",
+    "build:win": "electron-builder --win",
+    "build:mac": "electron-builder --mac",
+    "publish": "electron-builder --win --publish always"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "electron": "^40.6.0",
+    "electron-builder": "^26.8.1"
+  },
+  "dependencies": {
+    "axios": "^1.13.5",
+    "dotenv": "^17.3.1",
+    "jimp": "^1.6.0",
+    "node-fetch": "^2.7.0",
+    "screenshot-desktop": "^1.15.3"
+  },
+  "build": {
+    "appId": "com.tft.advisor",
+    "productName": "TFT Advisor",
+    "asar": true,
+    "files": [
+      "src/**/*",
+      "assets/**/*",
+      "node_modules/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": ".env.example",
+        "to": ".env.example"
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ],
+      "icon": "assets/icon.ico",
+      "artifactName": "TFT-Advisor-Setup-${version}.exe"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "TFT Advisor",
+      "installerHeaderIcon": "assets/icon.ico",
+      "deleteAppDataOnUninstall": false
+    },
+    "mac": {
+      "category": "public.app-category.games",
+      "icon": "assets/icon.icns",
+      "artifactName": "TFT-Advisor-${version}.dmg"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "OWNER_PLACEHOLDER",
+      "repo": "tft-advisor"
+    }
+  }
+}
