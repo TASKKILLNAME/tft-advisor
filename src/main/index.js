@@ -204,9 +204,13 @@ async function startGamePolling() {
 
     } catch (err) {
       const status = err.response?.status;
-      if (status === 401 || status === 403) {
+      if (status === 403) {
+        // Spectator API는 Development Key로 접근 불가 (403) → 게임 대기 중으로 처리
+        if (inGame) { inGame = false; sendToOverlay('game_end', {}); }
+        sendToOverlay('status', { message: `${cfg.summonerName} — 게임 대기 중 (Spectator 권한 없음)`, type: 'idle' });
+      } else if (status === 401) {
         sendToOverlay('status', { message: 'API 키 오류 — developer.riotgames.com에서 Regenerate 후 다시 입력하세요', type: 'error' });
-        summonerPuuid = null; // 키 오류 시 PUUID 초기화해서 다음 폴링에 재시도
+        summonerPuuid = null;
       }
       // 404는 게임 중 아님(정상), 무시
     }
