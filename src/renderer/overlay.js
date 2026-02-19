@@ -77,17 +77,20 @@ document.getElementById('btn-meta').addEventListener('click', () => {
 // --- 설정 저장 ---
 document.getElementById('save-settings-btn').addEventListener('click', () => {
   const apiKey = document.getElementById('api-key-input').value.trim();
-  const summoner = document.getElementById('summoner-input').value.trim();
+  const summonerName = document.getElementById('summoner-input').value.trim();
   const tagline = document.getElementById('tagline-input').value.trim() || 'KR1';
 
-  if (apiKey) {
-    ipcRenderer.send('update-api-key', apiKey);
+  if (!apiKey) {
+    updateStatus('API 키를 입력해주세요', 'error');
+    return;
   }
-  if (summoner) {
-    ipcRenderer.send('update-summoner', { name: summoner, tagline });
+  if (!summonerName) {
+    updateStatus('소환사명을 입력해주세요', 'error');
+    return;
   }
 
-  updateStatus('설정이 저장되었습니다', 'success');
+  // 단일 IPC로 한번에 저장 (main에서 config.json에 기록)
+  ipcRenderer.send('save-config', { apiKey, summonerName, tagline });
 });
 
 // --- IPC 이벤트 ---
@@ -421,7 +424,28 @@ async function init() {
   // 증강 초기 렌더링
   renderAugments({ current: [], advice: '게임 시작 후 증강이 표시됩니다.' });
 
-  updateStatus('API 연결 중...', 'idle');
+  // 저장된 설정 불러와서 input에 채우기
+  try {
+    const cfg = await ipcRenderer.invoke('get-config');
+    if (cfg.apiKey) {
+      document.getElementById('api-key-input').value = cfg.apiKey;
+    }
+    if (cfg.summonerName) {
+      document.getElementById('summoner-input').value = cfg.summonerName;
+    }
+    if (cfg.tagline) {
+      document.getElementById('tagline-input').value = cfg.tagline;
+    }
+
+    // 설정이 있으면 연결 중, 없으면 설정 안내
+    if (cfg.apiKey && cfg.summonerName) {
+      updateStatus('저장된 설정으로 연결 중...', 'idle');
+    } else {
+      updateStatus('메타 탭 → 설정에서 API 키와 소환사명을 입력하세요', 'error');
+    }
+  } catch (e) {
+    updateStatus('메타 탭 → 설정에서 API 키와 소환사명을 입력하세요', 'error');
+  }
 }
 
 init();
