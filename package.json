@@ -6,10 +6,9 @@
   "scripts": {
     "start": "electron .",
     "dev": "electron . --dev",
-    "build": "electron-builder",
-    "build:win": "electron-builder --win",
-    "build:mac": "electron-builder --mac",
-    "publish": "electron-builder --win --publish always"
+    "build": "electron-builder --publish never",
+    "build:win": "electron-builder --win --publish never",
+    "build:mac": "electron-builder --mac --publish never"
   },
   "keywords": [],
   "author": "",
@@ -64,11 +63,6 @@
       "category": "public.app-category.games",
       "icon": "assets/icon.icns",
       "artifactName": "TFT-Advisor-${version}.dmg"
-    },
-    "publish": {
-      "provider": "github",
-      "owner": "OWNER_PLACEHOLDER",
-      "repo": "tft-advisor"
     }
   }
 }
