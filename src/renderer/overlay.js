@@ -15,6 +15,33 @@ const gameInfo = document.getElementById('game-info');
 const tabsEl = document.getElementById('tabs');
 const contentEl = document.getElementById('content');
 
+// --- 마우스 진입/이탈: 오버레이 위에서는 클릭 가능, 벗어나면 게임으로 통과 ---
+// forward:true 옵션 덕분에 mouseleave 상태에서도 마우스 위치 추적 가능
+const appEl = document.getElementById('app');
+
+appEl.addEventListener('mouseenter', () => {
+  ipcRenderer.send('set-ignore-mouse', false);
+});
+
+appEl.addEventListener('mouseleave', () => {
+  // input/textarea에 포커스 중이면 게임으로 통과 안 함 (입력 보호)
+  const focused = document.activeElement;
+  const isTyping = focused && (focused.tagName === 'INPUT' || focused.tagName === 'TEXTAREA');
+  if (!isTyping) {
+    ipcRenderer.send('set-ignore-mouse', true);
+  }
+});
+
+// input에서 포커스 잃으면 다시 통과 허용
+document.addEventListener('blur', (e) => {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
+    ipcRenderer.send('set-ignore-mouse', true);
+  }
+}, true);
+
+// 처음 로드 시 클릭 가능 상태로 시작
+ipcRenderer.send('set-ignore-mouse', false);
+
 // --- 탭 전환 ---
 document.querySelectorAll('.tab').forEach(tab => {
   tab.addEventListener('click', () => {

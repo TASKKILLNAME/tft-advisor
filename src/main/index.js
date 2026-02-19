@@ -29,7 +29,7 @@ function createOverlayWindow() {
     skipTaskbar: true,
     resizable: true,
     movable: true,
-    focusable: false,
+    focusable: true,
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false,
@@ -38,6 +38,7 @@ function createOverlayWindow() {
   });
 
   overlayWindow.loadFile(path.join(__dirname, '../renderer/overlay.html'));
+  // 기본적으로 마우스 이벤트 허용 (클릭, 입력 가능)
   overlayWindow.setIgnoreMouseEvents(false);
 
   if (isDev) {
