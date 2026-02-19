@@ -142,9 +142,10 @@ function initApiWithConfig() {
 }
 
 async function startGamePolling() {
-  let cfg = initApiWithConfig();
-
   pollInterval = setInterval(async () => {
+    // 매 폴링마다 최신 설정을 디스크에서 읽음 (저장 후 즉시 반영)
+    const cfg = getConfig();
+
     // 설정 없으면 안내만
     if (!cfg.apiKey) {
       sendToOverlay('status', { message: '메타 탭 → 설정에서 API 키를 입력하세요', type: 'error' });
@@ -153,6 +154,12 @@ async function startGamePolling() {
     if (!cfg.summonerName) {
       sendToOverlay('status', { message: '메타 탭 → 설정에서 소환사명을 입력하세요', type: 'error' });
       return;
+    }
+
+    // API 키가 바뀌었으면 riotApi 키 갱신
+    if (riotApi && riotApi.apiKey !== cfg.apiKey) {
+      riotApi.updateApiKey(cfg.apiKey);
+      summonerPuuid = null; // 키 바뀌면 PUUID 재조회
     }
 
     try {
@@ -166,10 +173,13 @@ async function startGamePolling() {
           summonerPuuid = accountData.puuid;
           sendToOverlay('status', { message: `연결됨: ${cfg.summonerName}#${cfg.tagline}`, type: 'success' });
         } catch (e) {
-          if (e.response?.status === 403) {
-            sendToOverlay('status', { message: 'API 키 만료 또는 오류 — 메타 탭에서 갱신하세요', type: 'error' });
+          const status = e.response?.status;
+          if (status === 401 || status === 403) {
+            sendToOverlay('status', { message: 'API 키 오류 — developer.riotgames.com에서 Regenerate 후 다시 입력하세요', type: 'error' });
+          } else if (status === 404) {
+            sendToOverlay('status', { message: `소환사를 찾을 수 없습니다 — 닉네임/태그 확인 (입력값: ${cfg.summonerName}#${cfg.tagline})`, type: 'error' });
           } else {
-            sendToOverlay('status', { message: 'API 키 또는 소환사 이름을 확인하세요', type: 'error' });
+            sendToOverlay('status', { message: `연결 실패 (${status || '네트워크 오류'}) — 잠시 후 재시도합니다`, type: 'error' });
           }
           return;
         }
@@ -193,8 +203,10 @@ async function startGamePolling() {
       }
 
     } catch (err) {
-      if (err.response?.status === 403) {
-        sendToOverlay('status', { message: 'API 키 만료 — 메타 탭 → 설정에서 새 키를 입력하세요', type: 'error' });
+      const status = err.response?.status;
+      if (status === 401 || status === 403) {
+        sendToOverlay('status', { message: 'API 키 오류 — developer.riotgames.com에서 Regenerate 후 다시 입력하세요', type: 'error' });
+        summonerPuuid = null; // 키 오류 시 PUUID 초기화해서 다음 폴링에 재시도
       }
       // 404는 게임 중 아님(정상), 무시
     }
@@ -228,19 +240,11 @@ ipcMain.on('save-config', (event, { apiKey, summonerName, tagline }) => {
   const cfg = { apiKey, summonerName, tagline: tagline || 'KR1' };
   saveConfig(cfg);
 
-  // 런타임 env 업데이트 + API 재초기화
-  riotApi.updateApiKey(apiKey);
-  summonerPuuid = null;   // PUUID 재조회 강제
+  // PUUID 초기화 → 다음 폴링(최대 10초)에 새 설정으로 자동 재시도
+  summonerPuuid = null;
   inGame = false;
 
-  // pollInterval의 cfg 클로저도 갱신되도록 재시작
-  if (pollInterval) clearInterval(pollInterval);
-  const newCfg = getConfig();
-  riotApi = new RiotAPI(newCfg.apiKey, 'kr', 'asia');
-  analyzer = new GameAnalyzer(riotApi);
-  startGamePolling();
-
-  sendToOverlay('status', { message: '설정이 저장되었습니다. 연결 중...', type: 'success' });
+  sendToOverlay('status', { message: '설정 저장됨 — 10초 내로 연결을 시도합니다', type: 'idle' });
 });
 
 ipcMain.handle('get-screenshot-analysis', async () => {
@@ -254,6 +258,11 @@ app.whenReady().then(() => {
   // userData 경로 초기화 (app ready 이후에만 가능)
   userDataPath = app.getPath('userData');
   configPath = path.join(userDataPath, 'config.json');
+
+  // 초기 API 객체 생성 (폴링에서 매번 최신 cfg 읽으므로 빈 키로 시작해도 무방)
+  const initCfg = getConfig();
+  riotApi = new RiotAPI(initCfg.apiKey || '', 'kr', 'asia');
+  analyzer = new GameAnalyzer(riotApi);
 
   createOverlayWindow();
   createTray();
