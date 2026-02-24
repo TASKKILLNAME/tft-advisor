@@ -1,5 +1,5 @@
 const { ipcRenderer } = require('electron');
-const { AUGMENT_TIERS, AUGMENT_DATA, ECONOMY_GUIDE, TFT_META, ROLL_ODDS, STAGE_GUIDE, ITEM_GUIDE } = require('../engine/tftData');
+const { AUGMENT_TIERS, AUGMENT_DATA, ECONOMY_GUIDE, TFT_META, ROLL_ODDS, STAGE_GUIDE, ITEM_GUIDE, TFT_SET16_CHAMPIONS, getChampionIconUrl } = require('../engine/tftData');
 const PatchAnalyzer = require('../engine/patchAnalyzer');
 
 const patchAnalyzer = new PatchAnalyzer();
@@ -8,6 +8,25 @@ let isMinimized = false;
 let opacityLevel = 0.88;
 const opacityLevels = [0.88, 0.7, 0.5, 0.3];
 let opacityIdx = 0;
+
+// --- 글로벌 에러 핸들러 ---
+window.onerror = function(msg, url, line, col, error) {
+  console.error('Global error:', msg, url, line, col, error);
+  const fb = document.getElementById('error-fallback');
+  if (fb) fb.classList.add('visible');
+  return false;
+};
+
+// --- safeRender 래퍼 ---
+function safeRender(fn, containerId) {
+  try {
+    fn();
+  } catch (e) {
+    console.error('Render error in', containerId, ':', e);
+    const el = document.getElementById(containerId);
+    if (el) el.innerHTML = '<div style="color:#888;font-size:11px">데이터 로드 중...</div>';
+  }
+}
 
 // --- DOM 레퍼런스 ---
 const idleScreen = document.getElementById('idle-screen');
@@ -70,10 +89,9 @@ document.getElementById('btn-meta').addEventListener('click', () => {
   document.getElementById('tab-meta').classList.add('active');
 });
 
-// --- 설정 저장 (LCU 기반) ---
+// --- 설정 저장 ---
 document.getElementById('save-settings-btn').addEventListener('click', () => {
   const riotApiKey = document.getElementById('riot-api-key-input').value.trim();
-
   ipcRenderer.send('save-config', { riotApiKey });
   updateStatus('설정이 저장되었습니다', 'success');
 });
@@ -93,10 +111,8 @@ document.getElementById('browse-lcu-path-btn').addEventListener('click', async (
 
 // --- IPC 이벤트 ---
 
-// LCU 연결 상태
 ipcRenderer.on('lcu-status', (event, data) => {
   const { state, message, summoner } = data;
-
   switch (state) {
     case 'disconnected':
       updateStatus(message, 'error');
@@ -120,7 +136,6 @@ ipcRenderer.on('lcu-status', (event, data) => {
   }
 });
 
-// 랭크 정보
 ipcRenderer.on('rank-info', (event, data) => {
   if (data) {
     const detailEl = document.getElementById('lcu-connection-detail');
@@ -130,7 +145,6 @@ ipcRenderer.on('rank-info', (event, data) => {
   }
 });
 
-// 기존 이벤트 호환
 ipcRenderer.on('status', (event, data) => {
   updateStatus(data.message, data.type);
 });
@@ -143,14 +157,13 @@ ipcRenderer.on('game_start', (event, data) => {
 ipcRenderer.on('update', (event, data) => {
   if (!data || data.error) return;
   currentData = data;
-  renderAll(data);
+  safeRender(() => renderAll(data), 'content');
 });
 
 // --- 상태 업데이트 ---
 function updateStatus(message, type = 'idle') {
   const dot = document.getElementById('status-dot');
   const text = document.getElementById('status-text');
-
   dot.className = `status-dot ${type}`;
   text.textContent = message;
 }
@@ -175,14 +188,31 @@ function hideGameMode() {
   gameInfo.classList.add('hidden');
 }
 
+// --- 챔피언 아이콘 헬퍼 ---
+function getChampCostClass(name) {
+  const champ = TFT_SET16_CHAMPIONS[name];
+  return champ ? `cost-${champ.cost}` : '';
+}
+
+function renderChampionIcon(name) {
+  const champ = TFT_SET16_CHAMPIONS[name];
+  if (!champ) {
+    return `<div class="champ-icon-cell"><div style="width:30px;height:30px;border-radius:50%;background:rgba(255,255,255,0.1);border:2px solid #555"></div><span class="champ-name-label">${name}</span></div>`;
+  }
+  const url = getChampionIconUrl(champ.engId);
+  return `<div class="champ-icon-cell"><img src="${url}" class="${getChampCostClass(name)}" alt="${name}" onerror="this.style.display='none'"><span class="champ-name-label">${name}</span></div>`;
+}
+
 // --- 전체 렌더링 ---
 function renderAll(data) {
-  renderGameInfo(data.summary);
-  renderCompRecommendation(data.compRecommendation);
-  renderBuyPriority(data.buyPriority);
-  renderEconomy(data.economyAdvice);
-  renderPositioning(data.positioningTip);
-  renderAugments(data.augmentAdvice);
+  safeRender(() => renderGameInfo(data.summary), 'game-info');
+  safeRender(() => renderCompRecommendation(data.compRecommendation), 'comp-content');
+  safeRender(() => renderBuyPriority(data.buyPriority), 'buy-content');
+  safeRender(() => renderEconomy(data.economyAdvice), 'economy-advice-content');
+  safeRender(() => renderPositioning(data.positioningTip, data.compRecommendation), 'position-tip-content');
+  safeRender(() => renderAugments(data.augmentAdvice), 'augment-current');
+  safeRender(() => renderCompAugments(data.compRecommendation), 'comp-augments-content');
+  safeRender(() => renderDetailedItems(data.compRecommendation), 'comp-items-content');
 }
 
 function renderGameInfo(summary) {
@@ -204,7 +234,6 @@ function renderCompCard(comp, idx) {
   const planId = `game-plan-${idx}`;
 
   let html = `<div class="comp-card">`;
-  // Header with name, tier, difficulty
   html += `
     <div class="comp-name">
       ${comp.name}
@@ -217,16 +246,16 @@ function renderCompCard(comp, idx) {
       <div>경제: <span>${comp.economy || '-'}</span></div>
   `;
 
-  // Full comp units
+  // 풀 조합 with 챔피언 아이콘
   if (comp.fullComp?.length) {
-    html += `<div class="full-comp-units">`;
+    html += `<div class="champ-icons-row">`;
     comp.fullComp.forEach(u => {
-      html += `<span class="full-comp-unit">${u}</span>`;
+      html += renderChampionIcon(u);
     });
     html += `</div>`;
   }
 
-  // Key items (carry + tank)
+  // Key items
   if (comp.keyItems) {
     html += `<div class="key-items-row">`;
     if (comp.keyItems.carry) {
@@ -244,7 +273,6 @@ function renderCompCard(comp, idx) {
     html += `</div>`;
   }
 
-  // Description
   if (comp.description) {
     html += `<div style="margin-top:5px;color:#ccc">${comp.description}</div>`;
   }
@@ -292,6 +320,63 @@ function renderCompRecommendation(rec) {
   el.innerHTML = html;
 }
 
+// --- 조합별 증강 추천 렌더링 ---
+function renderCompAugments(rec) {
+  const area = document.getElementById('comp-augments-area');
+  const el = document.getElementById('comp-augments-content');
+  if (!rec?.compAugments) {
+    area.classList.add('hidden');
+    return;
+  }
+
+  area.classList.remove('hidden');
+  const aug = rec.compAugments;
+
+  let html = '';
+  if (aug.silver?.length) {
+    html += `<div class="augment-tier-row"><span class="augment-tier-label silver">Silver</span><span style="color:#ccc">${aug.silver.join(', ')}</span></div>`;
+  }
+  if (aug.gold?.length) {
+    html += `<div class="augment-tier-row"><span class="augment-tier-label gold">Gold</span><span style="color:#ccc">${aug.gold.join(', ')}</span></div>`;
+  }
+  if (aug.prismatic?.length) {
+    html += `<div class="augment-tier-row"><span class="augment-tier-label prismatic">Prism</span><span style="color:#ccc">${aug.prismatic.join(', ')}</span></div>`;
+  }
+
+  el.innerHTML = html;
+}
+
+// --- 조합별 상세 아이템 렌더링 ---
+function renderDetailedItems(rec) {
+  const area = document.getElementById('comp-items-area');
+  const el = document.getElementById('comp-items-content');
+  if (!rec?.detailedItems || rec.detailedItems.length === 0) {
+    area.classList.add('hidden');
+    return;
+  }
+
+  area.classList.remove('hidden');
+  let html = '';
+  rec.detailedItems.forEach(di => {
+    const unitName = di.unit;
+    html += `<div class="detailed-item-unit">`;
+    html += `<div class="detailed-item-unit-name">${unitName}</div>`;
+    if (di.primary?.length || di.items?.length) {
+      const items = di.primary || di.items || [];
+      html += `<div class="detailed-item-row"><span class="detailed-item-label">주:</span>${items.map(i => `<span class="item-chip">${i}</span>`).join('')}</div>`;
+    }
+    if (di.alternative?.length) {
+      html += `<div class="detailed-item-row"><span class="detailed-item-label">대체:</span>${di.alternative.map(i => `<span class="item-chip" style="opacity:0.7">${i}</span>`).join('')}</div>`;
+    }
+    if (di.mutant?.length) {
+      html += `<div class="detailed-item-row"><span class="detailed-item-label">변이:</span>${di.mutant.map(i => `<span class="item-chip" style="opacity:0.6">${i}</span>`).join('')}</div>`;
+    }
+    html += `</div>`;
+  });
+
+  el.innerHTML = html;
+}
+
 function renderBuyPriority(priorities) {
   const el = document.getElementById('buy-content');
   if (!priorities?.length) {
@@ -328,7 +413,6 @@ function renderEconomy(economy) {
     </div>
   `).join('');
 
-  // 리롤 확률 테이블
   renderRollOdds();
 
   // 경제 조언
@@ -339,7 +423,7 @@ function renderEconomy(economy) {
     ).join('');
   }
 
-  // 운영 방식 가이드 (Set 16: 5가지 전략)
+  // 운영 방식 가이드
   const typeEl = document.getElementById('economy-type-content');
   const guides = [
     { key: 'slowroll5', color: '#ff6040' },
@@ -361,7 +445,6 @@ function renderEconomy(economy) {
     `;
   }).join('');
 
-  // 스테이지 가이드
   renderStageGuide();
 }
 
@@ -406,7 +489,52 @@ function renderStageGuide() {
   }).join('');
 }
 
-function renderPositioning(posData) {
+// --- 배치 탭: 4×7 챔피언 아이콘 헥스 보드 ---
+function renderPositionHexBoard(positionBoard) {
+  const el = document.getElementById('position-hex-board');
+  if (!positionBoard || !Array.isArray(positionBoard) || positionBoard.length < 28) {
+    el.innerHTML = '<div style="color:#888;font-size:11px">배치 데이터 없음</div>';
+    return;
+  }
+
+  let html = '<div class="hex-board">';
+  for (let i = 0; i < 28; i++) {
+    const champName = positionBoard[i];
+    if (champName) {
+      const champ = TFT_SET16_CHAMPIONS[champName];
+      if (champ) {
+        const url = getChampionIconUrl(champ.engId);
+        html += `<div class="hex-cell"><img src="${url}" class="cost-${champ.cost}" alt="${champName}" onerror="this.style.display='none'"><span class="hex-name">${champName}</span></div>`;
+      } else {
+        html += `<div class="hex-cell"><span class="hex-name">${champName}</span></div>`;
+      }
+    } else {
+      html += `<div class="hex-cell empty"></div>`;
+    }
+  }
+  html += '</div>';
+  html += `<div style="display:flex;gap:8px;margin-top:6px;font-size:9px;color:#888;padding:0 6px">
+    <span><span style="color:#888">●</span> 1코</span>
+    <span><span style="color:#6bcf6b">●</span> 2코</span>
+    <span><span style="color:#5b9bd5">●</span> 3코</span>
+    <span><span style="color:#c679e0">●</span> 4코</span>
+    <span><span style="color:#ffd700">●</span> 5코+</span>
+  </div>`;
+
+  el.innerHTML = html;
+}
+
+function renderPositioning(posData, compRec) {
+  // v2: 추천 조합의 positionBoard가 있으면 헥스 보드 렌더링
+  if (compRec?.positionBoard) {
+    renderPositionHexBoard(compRec.positionBoard);
+  } else if (compRec?.recommended?.positionBoard) {
+    renderPositionHexBoard(compRec.recommended.positionBoard);
+  } else {
+    const hexEl = document.getElementById('position-hex-board');
+    if (hexEl) hexEl.innerHTML = '<div style="color:#888;font-size:11px">추천 조합 선택 후 배치가 표시됩니다</div>';
+  }
+
   const tipEl = document.getElementById('position-tip-content');
   if (!posData) {
     tipEl.innerHTML = '<div style="color:#888;font-size:11px">분석 중...</div>';
@@ -414,12 +542,12 @@ function renderPositioning(posData) {
   }
 
   tipEl.innerHTML = `
-    <div style="font-size:12px;font-weight:700;color:#c8aa64;margin-bottom:5px">${posData.name}</div>
-    <div style="font-size:11px;color:#ccc;margin-bottom:5px">${posData.description}</div>
-    <div class="alert warning"><span>tip</span><span>${posData.tip}</span></div>
+    <div style="font-size:12px;font-weight:700;color:#c8aa64;margin-bottom:5px">${posData.name || '배치 가이드'}</div>
+    <div style="font-size:11px;color:#ccc;margin-bottom:5px">${posData.description || ''}</div>
+    ${posData.tip ? `<div class="alert warning"><span>tip</span><span>${posData.tip}</span></div>` : ''}
   `;
 
-  // 헥스 보드 시각화
+  // 헥스 보드 시각화 (generic)
   const boardEl = document.getElementById('hex-board-visual');
   boardEl.innerHTML = renderHexBoard(posData.type);
 
@@ -433,7 +561,6 @@ function renderPositioning(posData) {
 }
 
 function renderHexBoard(posType) {
-  // 4행 7열 헥스 보드 시각화
   const boards = {
     corner_backline: [
       ['f', 'f', '', '', '', '', ''],
@@ -512,7 +639,7 @@ function renderAugments(augData) {
     `;
   }
 
-  // 증강 티어 가이드 — 전체 목록 + 설명
+  // 증강 티어 가이드
   const tierEl = document.getElementById('augment-tier-guide');
   const tiers = [
     { tier: 'S', label: 'S티어 - 항상 픽', color: '#ffd700' },
@@ -588,12 +715,10 @@ function renderLobbyInfo(players) {
   }).join('');
 }
 
-// --- 로비 정보 IPC ---
 ipcRenderer.on('lobby-info', (event, players) => {
   renderLobbyInfo(players);
 });
 
-// 게임 종료 시 로비 정보 숨기기
 ipcRenderer.on('game_end', (event) => {
   hideGameMode();
   updateStatus('게임 종료 - 다음 게임 대기 중', 'idle');
@@ -602,67 +727,69 @@ ipcRenderer.on('game_end', (event) => {
 
 // --- 초기 로드 ---
 async function init() {
-  // 이자 테이블 + 리롤 확률 + 스테이지 가이드 초기 렌더링
-  renderEconomy(null);
-
-  // 아이템 가이드 초기 렌더링
-  renderItemGuide();
-
-  // 메타 데이터 로드
   try {
-    const patchData = await patchAnalyzer.fetchLatestPatchNotes();
-    const metaEl = document.getElementById('meta-content');
-    metaEl.innerHTML = `
-      <div style="font-size:10px;color:#888;margin-bottom:6px">버전: ${patchData.version}</div>
-      ${(patchData.recommendations || []).map(r =>
-        `<div class="meta-item">• ${r}</div>`
-      ).join('')}
-      ${patchData.metaShifts?.length > 0 ? `
-        <div style="margin-top:8px">
-          <div style="font-size:10px;color:#c8aa64;font-weight:700;margin-bottom:4px">META SHIFTS</div>
-          ${patchData.metaShifts.map(s => `<div class="meta-item">• ${s}</div>`).join('')}
-        </div>
-      ` : ''}
-      ${patchData.buffedUnits?.length > 0 ? `
-        <div style="margin-top:8px">
-          <div class="meta-item"><span class="label">상향</span> ${patchData.buffedUnits.join(', ')}</div>
-          <div class="meta-item"><span class="label">하향</span> ${patchData.nerfedUnits?.join(', ') || '-'}</div>
-        </div>
-      ` : ''}
-    `;
-  } catch (e) {
-    document.getElementById('meta-content').textContent = '메타 데이터 로드 실패';
-  }
+    renderEconomy(null);
+    renderItemGuide();
 
-  // 증강 초기 렌더링
-  renderAugments({ current: [], advice: '게임 시작 후 증강이 표시됩니다.' });
+    // 메타 데이터 로드
+    try {
+      const patchData = await patchAnalyzer.fetchLatestPatchNotes();
+      const metaEl = document.getElementById('meta-content');
+      metaEl.innerHTML = `
+        <div style="font-size:10px;color:#888;margin-bottom:6px">버전: ${patchData.version}</div>
+        ${(patchData.recommendations || []).map(r =>
+          `<div class="meta-item">• ${r}</div>`
+        ).join('')}
+        ${patchData.metaShifts?.length > 0 ? `
+          <div style="margin-top:8px">
+            <div style="font-size:10px;color:#c8aa64;font-weight:700;margin-bottom:4px">META SHIFTS</div>
+            ${patchData.metaShifts.map(s => `<div class="meta-item">• ${s}</div>`).join('')}
+          </div>
+        ` : ''}
+        ${patchData.buffedUnits?.length > 0 ? `
+          <div style="margin-top:8px">
+            <div class="meta-item"><span class="label">상향</span> ${patchData.buffedUnits.join(', ')}</div>
+            <div class="meta-item"><span class="label">하향</span> ${patchData.nerfedUnits?.join(', ') || '-'}</div>
+          </div>
+        ` : ''}
+      `;
+    } catch (e) {
+      document.getElementById('meta-content').textContent = '메타 데이터 로드 실패';
+    }
 
-  // LCU 연결 상태 초기 확인
-  try {
-    const lcuState = await ipcRenderer.invoke('get-lcu-state');
-    if (lcuState.state === 'connected' && lcuState.summoner) {
-      updateLCUDetail(`연결됨: ${lcuState.summoner.name}${lcuState.summoner.tagLine ? '#' + lcuState.summoner.tagLine : ''}`);
-      updateStatus(`${lcuState.summoner.name} — ${lcuState.inGame ? '게임 중' : '게임 대기 중'}`, lcuState.inGame ? 'active' : 'success');
-    } else if (lcuState.state === 'searching') {
-      updateStatus('클라이언트 연결 중...', 'idle');
-    } else {
-      updateStatus('TFT 클라이언트를 실행해주세요', 'error');
+    renderAugments({ current: [], advice: '게임 시작 후 증강이 표시됩니다.' });
+
+    // LCU 연결 상태 초기 확인
+    try {
+      const lcuState = await ipcRenderer.invoke('get-lcu-state');
+      if (lcuState.state === 'connected' && lcuState.summoner) {
+        updateLCUDetail(`연결됨: ${lcuState.summoner.name}${lcuState.summoner.tagLine ? '#' + lcuState.summoner.tagLine : ''}`);
+        updateStatus(`${lcuState.summoner.name} — ${lcuState.inGame ? '게임 중' : '게임 대기 중'}`, lcuState.inGame ? 'active' : 'success');
+      } else if (lcuState.state === 'searching') {
+        updateStatus('클라이언트 연결 중...', 'idle');
+      } else {
+        updateStatus('TFT 클라이언트를 실행해주세요', 'error');
+      }
+    } catch (e) {
+      updateStatus('초기화 중...', 'idle');
+    }
+
+    // 저장된 설정 불러오기
+    try {
+      const cfg = await ipcRenderer.invoke('get-config');
+      if (cfg.lcuPath) {
+        document.getElementById('lcu-path-input').value = cfg.lcuPath;
+      }
+      if (cfg.riotApiKey) {
+        document.getElementById('riot-api-key-input').value = cfg.riotApiKey;
+      }
+    } catch (e) {
+      // 설정 로드 실패 무시
     }
   } catch (e) {
-    updateStatus('초기화 중...', 'idle');
-  }
-
-  // 저장된 설정 불러오기
-  try {
-    const cfg = await ipcRenderer.invoke('get-config');
-    if (cfg.lcuPath) {
-      document.getElementById('lcu-path-input').value = cfg.lcuPath;
-    }
-    if (cfg.riotApiKey) {
-      document.getElementById('riot-api-key-input').value = cfg.riotApiKey;
-    }
-  } catch (e) {
-    // 설정 로드 실패 무시
+    console.error('Init error:', e);
+    const fb = document.getElementById('error-fallback');
+    if (fb) fb.classList.add('visible');
   }
 }
 

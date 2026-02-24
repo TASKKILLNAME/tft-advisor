@@ -1,12 +1,14 @@
-// TFT Set 16: Lore & Legends 메타 데이터
+// TFT Set 16: Lore & Legends 메타 데이터 v2
 // src/data/tftMeta.js 에서 원본 데이터를 가져와 기존 인터페이스 유지
 const TFT_META = require('../data/tftMeta');
+const { TFT_SET16_CHAMPIONS, ENG_TO_KOR, getChampionIconUrl, getChampionsByComp } = require('../data/champions');
 
-// ─── META_COMPS: 전체 조합 리스트 (S/A/B 통합) ───
+// ─── META_COMPS: 전체 조합 리스트 (S/A/B/C 통합) ───
 const META_COMPS = [
   ...TFT_META.compositions.S,
-  ...TFT_META.compositions.A,
-  ...TFT_META.compositions.B,
+  ...(TFT_META.compositions.A || []),
+  ...(TFT_META.compositions.B || []),
+  ...(TFT_META.compositions.C || []),
 ].map(comp => ({
   id: (comp.nameEn || comp.name).toLowerCase().replace(/[^a-z0-9]+/g, '_'),
   name: comp.name,
@@ -16,12 +18,16 @@ const META_COMPS = [
   economy: comp.leveling || '',
   difficulty: comp.difficulty || '중간',
   description: comp.playstyle || '',
-  // 확장 필드 (새 데이터)
+  // 확장 필드 (v1)
   fullComp: comp.fullComp || null,
   keyItems: comp.keyItems || null,
   earlyGame: comp.earlyGame || null,
   midGame: comp.midGame || null,
   lateGame: comp.lateGame || null,
+  // v2 확장 필드
+  compAugments: comp.compAugments || null,
+  detailedItems: comp.detailedItems || null,
+  positionBoard: comp.positionBoard || null,
 }));
 
 // ─── AUGMENT_TIERS: 증강 이름 배열 (한글) ───
@@ -93,4 +99,9 @@ module.exports = {
   ROLL_ODDS,
   STAGE_GUIDE,
   ITEM_GUIDE,
+  // v2 챔피언 데이터 exports
+  TFT_SET16_CHAMPIONS,
+  ENG_TO_KOR,
+  getChampionIconUrl,
+  getChampionsByComp,
 };

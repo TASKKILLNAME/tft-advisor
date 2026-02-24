@@ -1,4 +1,4 @@
-const { META_COMPS, AUGMENT_TIERS, AUGMENT_DATA, UNIT_COSTS, POSITIONING_GUIDE, ECONOMY_GUIDE, TFT_META } = require('../tftData');
+const { META_COMPS, AUGMENT_TIERS, AUGMENT_DATA, UNIT_COSTS, POSITIONING_GUIDE, ECONOMY_GUIDE, TFT_META, TFT_SET16_CHAMPIONS, getChampionsByComp } = require('../tftData');
 
 class GameAnalyzer {
   constructor(riotApi) {
@@ -51,12 +51,16 @@ class GameAnalyzer {
         alternatives,
         reasoning: itemInfo
           ? `패치 ${TFT_META.version} 메타 추천. ${itemInfo}`
-          : `패치 ${TFT_META.version} 메타 기반 추천입니다.`
+          : `패치 ${TFT_META.version} 메타 기반 추천입니다.`,
+        // v2 데이터
+        compAugments: recommended.compAugments || null,
+        detailedItems: recommended.detailedItems || null,
+        positionBoard: recommended.positionBoard || null,
       },
       economyAdvice: this.getEconomyAdvice({}, '2-1'),
       positioningTip: this.getPositioningTip({ traits: [] }),
       buyPriority: this.getBuyPriority({ traits: [] }, '2-1'),
-      itemSuggestion: []
+      itemSuggestion: this._getDetailedItemSuggestion(recommended)
     };
   }
 
@@ -71,25 +75,23 @@ class GameAnalyzer {
     }
 
     const stage = this.parseStage(gameData);
-    const myUnits = myParticipant.traits || [];
-    const myGold = myParticipant.augments || [];
+    const compRec = this.recommendComp(myParticipant, stage);
 
     return {
       timestamp: Date.now(),
       stage,
       summary: this.buildSummary(gameData, myParticipant, stage),
       augmentAdvice: this.analyzeAugments(myParticipant.augments || []),
-      compRecommendation: this.recommendComp(myParticipant, stage),
+      compRecommendation: compRec,
       economyAdvice: this.getEconomyAdvice(myParticipant, stage),
       positioningTip: this.getPositioningTip(myParticipant),
       buyPriority: this.getBuyPriority(myParticipant, stage),
-      itemSuggestion: this.getItemSuggestion(myParticipant, stage)
+      itemSuggestion: this._getDetailedItemSuggestion(compRec.recommended)
     };
   }
 
   parseStage(gameData) {
     const gameLength = gameData.gameLength || 0;
-    // 게임 길이로 스테이지 추정 (대략적)
     if (gameLength < 120) return '1-1';
     if (gameLength < 240) return '2-1';
     if (gameLength < 420) return '3-1';
@@ -146,7 +148,6 @@ class GameAnalyzer {
   }
 
   getAugmentSynergy(augName) {
-    // 새 증강 데이터에서 설명 가져오기
     if (AUGMENT_DATA && AUGMENT_DATA[augName]) {
       return AUGMENT_DATA[augName].desc;
     }
@@ -156,16 +157,13 @@ class GameAnalyzer {
   recommendComp(participant, stage) {
     const currentTraits = participant.traits || [];
 
-    // 현재 시너지 분석
     const activeTraits = currentTraits
       .filter(t => t.tier_current > 0)
       .map(t => t.name);
 
-    // 가장 잘 맞는 메타 조합 찾기
     const scored = META_COMPS.map(comp => {
       let score = 0;
 
-      // 현재 유닛이 추천 조합과 겹치는 정도
       const overlap = activeTraits.filter(t =>
         comp.synergies.some(s => s.includes(t))
       ).length;
@@ -186,7 +184,11 @@ class GameAnalyzer {
     return {
       recommended: top3[0],
       alternatives: top3.slice(1),
-      reasoning: this.buildCompReasoning(top3[0], activeTraits, stage)
+      reasoning: this.buildCompReasoning(top3[0], activeTraits, stage),
+      // v2 데이터
+      compAugments: top3[0]?.compAugments || null,
+      detailedItems: top3[0]?.detailedItems || null,
+      positionBoard: top3[0]?.positionBoard || null,
     };
   }
 
@@ -212,7 +214,6 @@ class GameAnalyzer {
   }
 
   getEconomyAdvice(participant, stage) {
-    // Spectator API에는 골드 정보가 제한적 - 스테이지 기반 조언
     const stageNum = parseFloat(stage.replace('-', '.'));
 
     const advice = [];
@@ -255,7 +256,6 @@ class GameAnalyzer {
 
     const advice = [];
 
-    // 스테이지별 구매 우선순위
     if (stageNum <= 2.5) {
       advice.push({ priority: 1, text: '1~2코스트 핵심 기물 3성 목표' });
       advice.push({ priority: 2, text: '시너지 완성에 필요한 기물 구매' });
@@ -268,7 +268,6 @@ class GameAnalyzer {
       advice.push({ priority: 3, text: '중복 기물 파괴 → 아이템 재활용' });
     }
 
-    // 현재 활성 시너지 기반 추가 조언
     const activeTraits = currentTraits
       .filter(t => t.tier_current > 0)
       .map(t => t.name);
@@ -283,6 +282,44 @@ class GameAnalyzer {
     return advice;
   }
 
+  // v2: detailedItems 데이터 활용 아이템 추천
+  _getDetailedItemSuggestion(comp) {
+    if (!comp) return [];
+
+    // detailedItems가 있으면 우선 사용
+    if (comp.detailedItems && comp.detailedItems.length > 0) {
+      return comp.detailedItems.map(di => ({
+        unit: di.unit,
+        items: di.primary || [],
+        alternative: di.alternative || [],
+        mutant: di.mutant || [],
+      }));
+    }
+
+    // fallback: keyItems에서 추출
+    const suggestions = [];
+    if (comp.keyItems) {
+      if (comp.keyItems.carry) {
+        suggestions.push({
+          unit: comp.keyItems.carry.unit,
+          items: comp.keyItems.carry.items || [],
+          alternative: [],
+          mutant: [],
+        });
+      }
+      if (comp.keyItems.tank) {
+        suggestions.push({
+          unit: comp.keyItems.tank.unit,
+          items: comp.keyItems.tank.items || [],
+          alternative: [],
+          mutant: [],
+        });
+      }
+    }
+
+    return suggestions;
+  }
+
   getItemSuggestion(participant, stage) {
     const currentTraits = participant.traits || [];
     const activeTraits = currentTraits.filter(t => t.tier_current > 0).map(t => t.name);
@@ -290,7 +327,6 @@ class GameAnalyzer {
 
     const suggestions = [];
 
-    // 시너지 기반 아이템 추천
     if (activeTraits.includes('마법사')) {
       suggestions.push({ item: '라바돈의 죽음모자', reason: '마법사 AP 극대화' });
       suggestions.push({ item: '모렐로노미콘', reason: '마법사 화상 + AP' });
@@ -304,7 +340,6 @@ class GameAnalyzer {
       suggestions.push({ item: '가고일의 돌갑옷', reason: '탱커 방어력 극대화' });
     }
 
-    // 스테이지별 범용 조언
     if (stageNum <= 2.5) {
       suggestions.push({ item: '스파타의 검 / BF 검', reason: '초반 임시 아이템 보유' });
     } else {
@@ -318,7 +353,6 @@ class GameAnalyzer {
     const currentTraits = participant.traits || [];
     const activeTraits = currentTraits.filter(t => t.tier_current > 0).map(t => t.name);
 
-    // 시너지에 맞는 포지셔닝 가이드 반환
     let posType = 'backline';
 
     if (activeTraits.some(t => ['브루저', '전사', '수호자'].includes(t))) {

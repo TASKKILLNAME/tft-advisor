@@ -77,6 +77,7 @@ function createOverlayWindow() {
     resizable: true,
     movable: true,
     focusable: true,
+    show: false,
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false,
@@ -86,6 +87,37 @@ function createOverlayWindow() {
 
   overlayWindow.loadFile(path.join(__dirname, '../renderer/overlay.html'));
   overlayWindow.setIgnoreMouseEvents(false);
+
+  // ready-to-show 이벤트에서 표시
+  overlayWindow.once('ready-to-show', () => {
+    overlayWindow.show();
+    console.log('[TFT Advisor] 오버레이 윈도우 표시 완료');
+  });
+
+  // 크래시 핸들러: 자동 재로드
+  overlayWindow.webContents.on('crashed', (event, killed) => {
+    console.error('[TFT Advisor] 오버레이 렌더러 크래시 감지, 재로드 시도...', { killed });
+    setTimeout(() => {
+      if (overlayWindow && !overlayWindow.isDestroyed()) {
+        overlayWindow.reload();
+      }
+    }, 1000);
+  });
+
+  // 로드 실패 핸들러
+  overlayWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
+    console.error('[TFT Advisor] 오버레이 로드 실패:', errorCode, errorDescription);
+    setTimeout(() => {
+      if (overlayWindow && !overlayWindow.isDestroyed()) {
+        overlayWindow.loadFile(path.join(__dirname, '../renderer/overlay.html'));
+      }
+    }, 2000);
+  });
+
+  // 로드 완료 로그
+  overlayWindow.webContents.on('did-finish-load', () => {
+    console.log('[TFT Advisor] 오버레이 HTML 로드 완료');
+  });
 
   if (isDev) {
     overlayWindow.webContents.openDevTools({ mode: 'detach' });

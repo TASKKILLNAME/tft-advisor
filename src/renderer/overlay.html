@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>TFT Advisor v1.1.0</title>
+  <title>TFT Advisor v2.0.0</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -196,6 +196,48 @@
 
     .comp-detail span { color: #c8aa64; }
 
+    /* 챔피언 아이콘 풀 조합 표시 */
+    .champ-icons-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      margin-top: 5px;
+    }
+
+    .champ-icon-cell {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      width: 38px;
+    }
+
+    .champ-icon-cell img {
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      border: 2px solid #555;
+      background: rgba(0,0,0,0.4);
+    }
+
+    .champ-icon-cell img.cost-1 { border-color: #888; }
+    .champ-icon-cell img.cost-2 { border-color: #6bcf6b; }
+    .champ-icon-cell img.cost-3 { border-color: #5b9bd5; }
+    .champ-icon-cell img.cost-4 { border-color: #c679e0; }
+    .champ-icon-cell img.cost-5 { border-color: #ffd700; }
+    .champ-icon-cell img.cost-6 { border-color: #ff6b6b; }
+    .champ-icon-cell img.cost-7 { border-color: #ff4444; }
+
+    .champ-icon-cell .champ-name-label {
+      font-size: 8px;
+      color: #aaa;
+      margin-top: 2px;
+      text-align: center;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 38px;
+    }
+
     /* 증강 리스트 */
     .augment-item {
       display: flex;
@@ -255,15 +297,58 @@
     .interest-cell .int { color: #80ff80; font-size: 11px; }
     .interest-cell.highlight { background: rgba(200, 170, 100, 0.15); border: 1px solid rgba(200, 170, 100, 0.4); }
 
-    /* 포지셔닝 그리드 */
+    /* 헥스 보드 (4×7 그리드) */
     .hex-board {
       display: grid;
       grid-template-columns: repeat(7, 1fr);
-      gap: 3px;
+      gap: 2px;
       padding: 6px;
       background: rgba(0,0,0,0.3);
       border-radius: 6px;
       margin-top: 6px;
+    }
+
+    .hex-cell {
+      width: 44px;
+      height: 48px;
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 4px;
+    }
+
+    .hex-cell img {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      border: 2px solid #555;
+    }
+
+    .hex-cell img.cost-1 { border-color: #888; }
+    .hex-cell img.cost-2 { border-color: #6bcf6b; }
+    .hex-cell img.cost-3 { border-color: #5b9bd5; }
+    .hex-cell img.cost-4 { border-color: #c679e0; }
+    .hex-cell img.cost-5 { border-color: #ffd700; }
+    .hex-cell img.cost-6 { border-color: #ff6b6b; }
+    .hex-cell img.cost-7 { border-color: #ff4444; }
+
+    .hex-cell .hex-name {
+      font-size: 7px;
+      color: #aaa;
+      margin-top: 1px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 42px;
+    }
+
+    .hex-cell.empty {
+      background: rgba(255,255,255,0.02);
+      border-color: rgba(255,255,255,0.05);
     }
 
     .hex-row { display: flex; gap: 3px; justify-content: center; margin: 1px 0; }
@@ -455,6 +540,34 @@
     /* 증강 설명 */
     .augment-desc { font-size: 9px; color: #888; margin-top: 1px; }
 
+    /* 조합별 증강 추천 */
+    .comp-augments-section { margin-top: 6px; }
+    .augment-tier-row {
+      display: flex; align-items: center; gap: 6px;
+      padding: 3px 0; font-size: 10px;
+    }
+    .augment-tier-label {
+      font-weight: 700; font-size: 9px; padding: 1px 5px;
+      border-radius: 3px; min-width: 40px; text-align: center;
+    }
+    .augment-tier-label.silver { background: rgba(192,192,192,0.2); color: #c0c0c0; }
+    .augment-tier-label.gold { background: rgba(255,215,0,0.2); color: #ffd700; }
+    .augment-tier-label.prismatic { background: rgba(200,100,255,0.2); color: #c864ff; }
+
+    /* 조합별 상세 아이템 */
+    .detailed-items-section { margin-top: 6px; }
+    .detailed-item-unit {
+      padding: 5px 8px; margin-bottom: 4px;
+      background: rgba(255,255,255,0.03); border-radius: 4px;
+    }
+    .detailed-item-unit-name {
+      font-size: 10px; font-weight: 700; color: #c8aa64; margin-bottom: 3px;
+    }
+    .detailed-item-row {
+      display: flex; flex-wrap: wrap; gap: 3px; margin-bottom: 2px;
+    }
+    .detailed-item-label { font-size: 9px; color: #888; min-width: 35px; }
+
     /* 로비 정보 */
     #lobby-info {
       padding: 8px 10px;
@@ -474,17 +587,27 @@
     .lobby-player.me { border: 1px solid rgba(200, 170, 100, 0.3); background: rgba(200, 170, 100, 0.08); }
     .lobby-rank { color: #c8aa64; font-weight: 600; font-size: 9px; }
     .lobby-name { color: #ccc; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 90px; }
+
+    /* 에러 fallback */
+    #error-fallback {
+      display: none;
+      padding: 15px;
+      text-align: center;
+      color: #ff6b6b;
+      font-size: 12px;
+    }
+    #error-fallback.visible { display: block; }
   </style>
 </head>
 <body>
   <div id="app">
     <!-- 헤더 -->
     <div id="header">
-      <div class="title">⚔ TFT ADVISOR</div>
+      <div class="title">TFT ADVISOR v2</div>
       <div class="controls">
-        <button class="btn-icon" id="btn-meta" title="메타 분석">📊</button>
-        <button class="btn-icon" id="btn-opacity" title="투명도 조절">👁</button>
-        <button class="btn-icon" id="btn-minimize" title="최소화">−</button>
+        <button class="btn-icon" id="btn-meta" title="메타 분석">M</button>
+        <button class="btn-icon" id="btn-opacity" title="투명도 조절">O</button>
+        <button class="btn-icon" id="btn-minimize" title="최소화">-</button>
       </div>
     </div>
 
@@ -517,12 +640,15 @@
       <div class="tab" data-tab="meta">메타</div>
     </div>
 
+    <!-- 에러 fallback -->
+    <div id="error-fallback">데이터 로드 실패. 재시작해주세요.</div>
+
     <!-- 컨텐츠 영역 -->
     <div id="content">
 
       <!-- 대기 화면 -->
       <div id="idle-screen">
-        <div class="big-icon">🎮</div>
+        <div class="big-icon">&#127918;</div>
         <h3>TFT 게임을 기다리는 중</h3>
         <p>TFT 게임이 시작되면<br>실시간으로 조언을 제공합니다.</p>
         <br>
@@ -532,12 +658,22 @@
       <!-- 조합 탭 -->
       <div class="tab-content" id="tab-comp">
         <div id="comp-recommendation" class="section">
-          <div class="section-title">🏆 추천 조합</div>
+          <div class="section-title">추천 조합</div>
           <div id="comp-content">데이터 로딩 중...</div>
         </div>
 
+        <div id="comp-augments-area" class="section hidden">
+          <div class="section-title">조합별 증강 추천</div>
+          <div id="comp-augments-content"></div>
+        </div>
+
+        <div id="comp-items-area" class="section hidden">
+          <div class="section-title">조합별 상세 아이템</div>
+          <div id="comp-items-content"></div>
+        </div>
+
         <div id="buy-priority" class="section">
-          <div class="section-title">🛒 구매 우선순위</div>
+          <div class="section-title">구매 우선순위</div>
           <div id="buy-content">데이터 로딩 중...</div>
         </div>
       </div>
@@ -545,15 +681,15 @@
       <!-- 아이템 탭 -->
       <div class="tab-content" id="tab-item">
         <div class="section">
-          <div class="section-title">🗡 AD 캐리 아이템</div>
+          <div class="section-title">AD 캐리 아이템</div>
           <div id="item-ad"></div>
         </div>
         <div class="section">
-          <div class="section-title">🔮 AP 캐리 아이템</div>
+          <div class="section-title">AP 캐리 아이템</div>
           <div id="item-ap"></div>
         </div>
         <div class="section">
-          <div class="section-title">🛡 탱커 아이템</div>
+          <div class="section-title">탱커 아이템</div>
           <div id="item-tank"></div>
         </div>
       </div>
@@ -561,27 +697,27 @@
       <!-- 경제 탭 -->
       <div class="tab-content" id="tab-economy">
         <div class="section">
-          <div class="section-title">💰 이자 가이드</div>
+          <div class="section-title">이자 가이드</div>
           <div class="interest-table" id="interest-table"></div>
         </div>
 
         <div class="section">
-          <div class="section-title">🎲 리롤 확률 (레벨별)</div>
+          <div class="section-title">리롤 확률 (레벨별)</div>
           <div id="roll-odds-content"></div>
         </div>
 
         <div class="section">
-          <div class="section-title">📈 현재 운영 조언</div>
+          <div class="section-title">현재 운영 조언</div>
           <div id="economy-advice-content">데이터 로딩 중...</div>
         </div>
 
         <div class="section">
-          <div class="section-title">📋 운영 방식 가이드</div>
+          <div class="section-title">운영 방식 가이드</div>
           <div id="economy-type-content"></div>
         </div>
 
         <div class="section">
-          <div class="section-title">📍 스테이지 가이드</div>
+          <div class="section-title">스테이지 가이드</div>
           <div id="stage-guide-content"></div>
         </div>
       </div>
@@ -589,17 +725,22 @@
       <!-- 배치 탭 -->
       <div class="tab-content" id="tab-position">
         <div class="section">
-          <div class="section-title">🗺 배치 가이드</div>
+          <div class="section-title">추천 조합 배치</div>
+          <div id="position-hex-board"></div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">배치 가이드</div>
           <div id="position-tip-content">데이터 로딩 중...</div>
         </div>
 
         <div class="section">
-          <div class="section-title">📐 헥스 보드 예시</div>
+          <div class="section-title">헥스 보드 예시</div>
           <div id="hex-board-visual"></div>
         </div>
 
         <div class="section">
-          <div class="section-title">💡 일반 팁</div>
+          <div class="section-title">일반 팁</div>
           <div id="position-tips-general"></div>
         </div>
       </div>
@@ -607,12 +748,12 @@
       <!-- 증강 탭 -->
       <div class="tab-content" id="tab-augment">
         <div class="section">
-          <div class="section-title">✨ 현재 증강</div>
+          <div class="section-title">현재 증강</div>
           <div id="augment-current">증강 없음</div>
         </div>
 
         <div class="section">
-          <div class="section-title">⭐ 증강 티어 가이드</div>
+          <div class="section-title">증강 티어 가이드</div>
           <div id="augment-tier-guide"></div>
         </div>
       </div>
@@ -620,14 +761,13 @@
       <!-- 메타 탭 -->
       <div class="tab-content" id="tab-meta">
         <div class="section">
-          <div class="section-title">🔥 현재 메타</div>
+          <div class="section-title">현재 메타</div>
           <div id="meta-content">로딩 중...</div>
         </div>
 
         <div class="section">
-          <div class="section-title">⚙ 설정</div>
+          <div class="section-title">설정</div>
 
-          <!-- LCU 연결 상태 -->
           <div style="margin-bottom: 10px;">
             <div style="font-size: 10px; color: #888; text-transform: uppercase; margin-bottom: 4px;">클라이언트 연결</div>
             <div id="lcu-connection-detail" style="
@@ -637,7 +777,6 @@
             ">확인 중...</div>
           </div>
 
-          <!-- 클라이언트 경로 -->
           <div style="margin-bottom: 10px;">
             <div style="font-size: 10px; color: #888; text-transform: uppercase; margin-bottom: 4px;">클라이언트 경로</div>
             <div style="display: flex; gap: 4px;">
@@ -655,10 +794,8 @@
             <div style="font-size: 9px; color: #666; margin-top: 3px;">자동 감지 실패 시 수동으로 LoL 설치 경로를 지정하세요</div>
           </div>
 
-          <!-- 구분선 -->
           <div style="border-top: 1px solid rgba(255,255,255,0.06); margin: 10px 0;"></div>
 
-          <!-- 추가 기능: Production API 키 (선택) -->
           <div style="margin-bottom: 6px;">
             <div style="font-size: 10px; color: #666; text-transform: uppercase; margin-bottom: 4px;">추가 기능 (선택)</div>
             <div style="font-size: 9px; color: #555; margin-bottom: 4px;">Production API 키가 있으면 인게임 실시간 분석이 가능합니다</div>
