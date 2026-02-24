@@ -64,6 +64,49 @@ class TFTLiveData extends EventEmitter {
     }
   }
 
+  // ─── 로비 데이터 ────────────────────────────
+
+  async getGameParticipants() {
+    try {
+      const session = await this.getGameSession();
+      if (!session?.gameData?.teamOne && !session?.gameData?.playerChampionSelections) {
+        // TFT uses gameData.participants or playerChampionSelections
+        // Try multiple known paths for participant data
+        const participants = session?.gameData?.participants
+          || session?.gameData?.teamOne
+          || [];
+        return participants.map(p => ({
+          puuid: p.puuid,
+          summonerId: p.summonerId,
+          name: p.summonerName || p.gameName || p.displayName || 'Unknown',
+        }));
+      }
+
+      // Fallback: query champ-select or lobby members
+      const lobby = await this.lcu.request('GET', '/lol-lobby/v2/lobby');
+      if (lobby?.members) {
+        return lobby.members.map(m => ({
+          puuid: m.puuid,
+          summonerId: m.summonerId,
+          name: m.summonerName || m.gameName || 'Unknown',
+        }));
+      }
+
+      return [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  async getMultipleRanks(puuids) {
+    const results = [];
+    for (const puuid of puuids) {
+      const rank = await this.getSummonerRank(puuid);
+      results.push(rank);
+    }
+    return results;
+  }
+
   // ─── 인게임 폴링 ────────────────────────────
 
   startPolling(intervalMs = 8000) {

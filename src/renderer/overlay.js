@@ -1,5 +1,5 @@
 const { ipcRenderer } = require('electron');
-const { AUGMENT_TIERS, AUGMENT_DATA, ECONOMY_GUIDE, TFT_META } = require('../engine/tftData');
+const { AUGMENT_TIERS, AUGMENT_DATA, ECONOMY_GUIDE, TFT_META, ROLL_ODDS, STAGE_GUIDE, ITEM_GUIDE } = require('../engine/tftData');
 const PatchAnalyzer = require('../engine/patchAnalyzer');
 
 const patchAnalyzer = new PatchAnalyzer();
@@ -140,11 +140,6 @@ ipcRenderer.on('game_start', (event, data) => {
   updateStatus(`게임 시작! (ID: ${data.gameId?.toString().slice(-6) || '?'})`, 'active');
 });
 
-ipcRenderer.on('game_end', (event) => {
-  hideGameMode();
-  updateStatus('게임 종료 - 다음 게임 대기 중', 'idle');
-});
-
 ipcRenderer.on('update', (event, data) => {
   if (!data || data.error) return;
   currentData = data;
@@ -197,6 +192,83 @@ function renderGameInfo(summary) {
   document.getElementById('chip-rank').textContent = `${summary.myRank}위/${summary.playersAlive}명`;
 }
 
+function getDiffClass(diff) {
+  if (diff === '쉬움') return 'diff-easy';
+  if (diff === '어려움') return 'diff-hard';
+  return 'diff-medium';
+}
+
+function renderCompCard(comp, idx) {
+  const tierClass = `tier-${comp.tier}`;
+  const diffClass = getDiffClass(comp.difficulty);
+  const planId = `game-plan-${idx}`;
+
+  let html = `<div class="comp-card">`;
+  // Header with name, tier, difficulty
+  html += `
+    <div class="comp-name">
+      ${comp.name}
+      <span class="tier-badge ${tierClass}">${comp.tier}티어</span>
+      ${comp.difficulty ? `<span class="diff-badge ${diffClass}">${comp.difficulty}</span>` : ''}
+    </div>
+    <div class="comp-detail">
+      <div>핵심 기물: <span>${comp.keyUnits?.join(', ') || '-'}</span></div>
+      <div>시너지: <span>${comp.synergies?.join(', ') || '-'}</span></div>
+      <div>경제: <span>${comp.economy || '-'}</span></div>
+  `;
+
+  // Full comp units
+  if (comp.fullComp?.length) {
+    html += `<div class="full-comp-units">`;
+    comp.fullComp.forEach(u => {
+      html += `<span class="full-comp-unit">${u}</span>`;
+    });
+    html += `</div>`;
+  }
+
+  // Key items (carry + tank)
+  if (comp.keyItems) {
+    html += `<div class="key-items-row">`;
+    if (comp.keyItems.carry) {
+      html += `<div class="key-items-group">
+        <div class="key-items-label">${comp.keyItems.carry.unit} (캐리)</div>
+        <div class="key-items-list">${comp.keyItems.carry.items?.join(', ') || '-'}</div>
+      </div>`;
+    }
+    if (comp.keyItems.tank) {
+      html += `<div class="key-items-group">
+        <div class="key-items-label">${comp.keyItems.tank.unit} (탱커)</div>
+        <div class="key-items-list">${comp.keyItems.tank.items?.join(', ') || '-'}</div>
+      </div>`;
+    }
+    html += `</div>`;
+  }
+
+  // Description
+  if (comp.description) {
+    html += `<div style="margin-top:5px;color:#ccc">${comp.description}</div>`;
+  }
+
+  html += `</div>`; // close comp-detail
+
+  // Game plan (collapsible)
+  if (comp.earlyGame || comp.midGame || comp.lateGame) {
+    html += `
+      <div class="game-plan">
+        <div class="game-plan-toggle" onclick="document.getElementById('${planId}').classList.toggle('open');this.textContent=document.getElementById('${planId}').classList.contains('open')?'▼ 게임 플랜 접기':'▶ 게임 플랜 보기'">▶ 게임 플랜 보기</div>
+        <div class="game-plan-body" id="${planId}">
+          ${comp.earlyGame ? `<div class="game-plan-phase phase-early"><div class="phase-label">초반</div>${comp.earlyGame}</div>` : ''}
+          ${comp.midGame ? `<div class="game-plan-phase phase-mid"><div class="phase-label">중반</div>${comp.midGame}</div>` : ''}
+          ${comp.lateGame ? `<div class="game-plan-phase phase-late"><div class="phase-label">후반</div>${comp.lateGame}</div>` : ''}
+        </div>
+      </div>
+    `;
+  }
+
+  html += `</div>`; // close comp-card
+  return html;
+}
+
 function renderCompRecommendation(rec) {
   const el = document.getElementById('comp-content');
   if (!rec?.recommended) {
@@ -204,23 +276,7 @@ function renderCompRecommendation(rec) {
     return;
   }
 
-  const comp = rec.recommended;
-  const tierClass = `tier-${comp.tier}`;
-
-  let html = `
-    <div class="comp-card">
-      <div class="comp-name">
-        ${comp.name}
-        <span class="tier-badge ${tierClass}">${comp.tier}티어</span>
-      </div>
-      <div class="comp-detail">
-        <div>핵심 기물: <span>${comp.keyUnits?.join(', ') || '-'}</span></div>
-        <div>시너지: <span>${comp.synergies?.join(', ') || '-'}</span></div>
-        <div>경제: <span>${comp.economy || '-'}</span></div>
-        <div style="margin-top:5px;color:#ccc">${comp.description || ''}</div>
-      </div>
-    </div>
-  `;
+  let html = renderCompCard(rec.recommended, 0);
 
   if (rec.reasoning) {
     html += `<div class="alert info"><span>i</span><span>${rec.reasoning}</span></div>`;
@@ -228,13 +284,8 @@ function renderCompRecommendation(rec) {
 
   if (rec.alternatives?.length > 0) {
     html += `<div style="font-size:10px;color:#888;margin-top:6px;margin-bottom:4px">대안 조합</div>`;
-    rec.alternatives.forEach(alt => {
-      html += `
-        <div style="display:flex;align-items:center;gap:6px;padding:5px 8px;background:rgba(255,255,255,0.03);border-radius:4px;margin-bottom:3px;">
-          <span style="font-size:11px;color:#ccc">${alt.name}</span>
-          <span class="tier-badge tier-${alt.tier}" style="font-size:10px">${alt.tier}</span>
-        </div>
-      `;
+    rec.alternatives.forEach((alt, i) => {
+      html += renderCompCard(alt, i + 1);
     });
   }
 
@@ -277,6 +328,9 @@ function renderEconomy(economy) {
     </div>
   `).join('');
 
+  // 리롤 확률 테이블
+  renderRollOdds();
+
   // 경제 조언
   const adviceEl = document.getElementById('economy-advice-content');
   if (economy?.advice) {
@@ -303,6 +357,50 @@ function renderEconomy(economy) {
         <div style="font-size:11px;font-weight:700;color:${g.color};margin-bottom:3px">${data.name}</div>
         <div style="font-size:10px;color:#aaa">${data.gold_target}</div>
         <div style="font-size:10px;color:#888;margin-top:2px">타이밍: ${data.timing} | 조합: ${data.when}</div>
+      </div>
+    `;
+  }).join('');
+
+  // 스테이지 가이드
+  renderStageGuide();
+}
+
+function renderRollOdds() {
+  const el = document.getElementById('roll-odds-content');
+  if (!ROLL_ODDS) { el.innerHTML = '데이터 없음'; return; }
+
+  const costColors = ['cost-1', 'cost-2', 'cost-3', 'cost-4', 'cost-5'];
+  const levels = Object.keys(ROLL_ODDS).sort((a, b) => a - b);
+
+  let html = `<table class="roll-table"><thead><tr>
+    <th>레벨</th><th class="cost-1">1코</th><th class="cost-2">2코</th><th class="cost-3">3코</th><th class="cost-4">4코</th><th class="cost-5">5코</th>
+  </tr></thead><tbody>`;
+
+  levels.forEach(lv => {
+    const odds = ROLL_ODDS[lv];
+    html += `<tr><td style="color:#c8aa64;font-weight:700">Lv${lv}</td>`;
+    odds.forEach((pct, i) => {
+      const isHigh = pct >= 25;
+      html += `<td class="${costColors[i]}${isHigh ? ' high' : ''}">${pct}%</td>`;
+    });
+    html += `</tr>`;
+  });
+
+  html += `</tbody></table>`;
+  el.innerHTML = html;
+}
+
+function renderStageGuide() {
+  const el = document.getElementById('stage-guide-content');
+  if (!STAGE_GUIDE) { el.innerHTML = '데이터 없음'; return; }
+
+  const stages = Object.keys(STAGE_GUIDE).sort();
+  el.innerHTML = stages.map(key => {
+    const s = STAGE_GUIDE[key];
+    return `
+      <div class="stage-guide-item">
+        <div class="stage-guide-name">${s.name}</div>
+        <div class="stage-guide-tip">${s.tips.map(t => `• ${t}`).join('<br>')}</div>
       </div>
     `;
   }).join('');
@@ -389,13 +487,19 @@ function renderHexBoard(posType) {
 function renderAugments(augData) {
   const currentEl = document.getElementById('augment-current');
   if (augData?.current?.length > 0) {
-    currentEl.innerHTML = augData.current.map(aug => `
-      <div class="augment-item">
-        <span class="tier-badge tier-${aug.tier}">${aug.tier}</span>
-        <span style="font-size:11px;color:#e8e0d0">${aug.name}</span>
-        <span style="font-size:10px;color:#888;margin-left:auto">${aug.synergy}</span>
-      </div>
-    `).join('');
+    currentEl.innerHTML = augData.current.map(aug => {
+      const data = AUGMENT_DATA[aug.name];
+      return `
+        <div class="augment-item" style="flex-direction:column;align-items:flex-start">
+          <div style="display:flex;align-items:center;gap:8px;width:100%">
+            <span class="tier-badge tier-${aug.tier}">${aug.tier}</span>
+            <span style="font-size:11px;color:#e8e0d0">${aug.name}</span>
+            <span style="font-size:10px;color:#888;margin-left:auto">${aug.synergy}</span>
+          </div>
+          ${data?.desc ? `<div class="augment-desc">${data.desc}</div>` : ''}
+        </div>
+      `;
+    }).join('');
 
     if (augData.advice) {
       currentEl.innerHTML += `<div class="alert success" style="margin-top:6px"><span>v</span><span>${augData.advice}</span></div>`;
@@ -408,7 +512,7 @@ function renderAugments(augData) {
     `;
   }
 
-  // 증강 티어 가이드
+  // 증강 티어 가이드 — 전체 목록 + 설명
   const tierEl = document.getElementById('augment-tier-guide');
   const tiers = [
     { tier: 'S', label: 'S티어 - 항상 픽', color: '#ffd700' },
@@ -417,28 +521,92 @@ function renderAugments(augData) {
   ];
 
   tierEl.innerHTML = tiers.map(t => {
-    const augList = AUGMENT_TIERS[t.tier]?.slice(0, 5) || [];
+    const augNames = AUGMENT_TIERS[t.tier] || [];
     return `
-      <div style="margin-bottom:8px">
+      <div style="margin-bottom:10px">
         <div style="font-size:11px;font-weight:700;color:${t.color};margin-bottom:4px">${t.label}</div>
-        <div style="display:flex;flex-wrap:wrap;gap:3px">
-          ${augList.map(a => `
-            <span style="font-size:10px;padding:2px 6px;background:rgba(255,255,255,0.05);border-radius:3px;color:#ccc">${a}</span>
-          `).join('')}
-          ${AUGMENT_TIERS[t.tier]?.length > 5
-            ? `<span style="font-size:10px;color:#666">+${AUGMENT_TIERS[t.tier].length - 5}개</span>`
-            : ''
-          }
-        </div>
+        ${augNames.map(name => {
+          const data = AUGMENT_DATA[name];
+          return `
+            <div class="augment-item" style="flex-direction:column;align-items:flex-start">
+              <span style="font-size:10px;color:#ccc">${name}</span>
+              ${data?.desc ? `<div class="augment-desc">${data.desc}</div>` : ''}
+            </div>
+          `;
+        }).join('')}
       </div>
     `;
   }).join('');
 }
 
+// --- 아이템 가이드 렌더링 ---
+function renderItemGuide() {
+  const categories = [
+    { key: 'AD', elId: 'item-ad', cssClass: 'ad' },
+    { key: 'AP', elId: 'item-ap', cssClass: 'ap' },
+    { key: 'Tank', elId: 'item-tank', cssClass: 'tank' },
+  ];
+
+  categories.forEach(cat => {
+    const el = document.getElementById(cat.elId);
+    const data = ITEM_GUIDE?.[cat.key];
+    if (!el || !data) return;
+
+    el.innerHTML = `
+      <div style="font-size:11px;color:#aaa;margin-bottom:5px">추천 유닛</div>
+      <div class="item-unit-list">
+        ${data.units.map(u => `<span class="item-unit-chip">${u}</span>`).join('')}
+      </div>
+      <div style="font-size:11px;color:#aaa;margin-top:8px;margin-bottom:5px">핵심 아이템</div>
+      <div class="item-list">
+        ${data.bestItems.map(item => `<span class="item-chip">${item}</span>`).join('')}
+      </div>
+    `;
+  });
+}
+
+// --- 로비 정보 렌더링 ---
+function renderLobbyInfo(players) {
+  const container = document.getElementById('lobby-info');
+  const playersEl = document.getElementById('lobby-players');
+  if (!players?.length) {
+    container.classList.add('hidden');
+    return;
+  }
+
+  container.classList.remove('hidden');
+
+  playersEl.innerHTML = players.map(p => {
+    const rankStr = p.rank ? `${p.rank.tier || '?'} ${p.rank.division || ''}`.trim() : 'Unranked';
+    const meClass = p.isMe ? ' me' : '';
+    return `
+      <div class="lobby-player${meClass}">
+        <span class="lobby-name" title="${p.name}">${p.name}</span>
+        <span class="lobby-rank">${rankStr}</span>
+      </div>
+    `;
+  }).join('');
+}
+
+// --- 로비 정보 IPC ---
+ipcRenderer.on('lobby-info', (event, players) => {
+  renderLobbyInfo(players);
+});
+
+// 게임 종료 시 로비 정보 숨기기
+ipcRenderer.on('game_end', (event) => {
+  hideGameMode();
+  updateStatus('게임 종료 - 다음 게임 대기 중', 'idle');
+  document.getElementById('lobby-info').classList.add('hidden');
+});
+
 // --- 초기 로드 ---
 async function init() {
-  // 이자 테이블 초기 렌더링
+  // 이자 테이블 + 리롤 확률 + 스테이지 가이드 초기 렌더링
   renderEconomy(null);
+
+  // 아이템 가이드 초기 렌더링
+  renderItemGuide();
 
   // 메타 데이터 로드
   try {

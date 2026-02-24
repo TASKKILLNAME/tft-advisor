@@ -226,9 +226,12 @@ async function onLCUConnected() {
   // 게임 감지 시작
   gameDetector = new TFTGameDetector(lcuClient);
 
-  gameDetector.on('game-start', (data) => {
+  gameDetector.on('game-start', async (data) => {
     inGame = true;
     sendToOverlay('game_start', { gameId: data.session?.gameData?.gameId || 0 });
+
+    // 로비 참가자 정보 조회 + 랭크 조회
+    fetchAndSendLobbyInfo();
 
     // 메타 기반 분석 제공
     provideMetaAnalysis();
@@ -269,6 +272,32 @@ async function onLCUConnected() {
       state: 'connected',
       message: `${displayName} — 게임 대기 중`
     });
+  }
+}
+
+async function fetchAndSendLobbyInfo() {
+  if (!liveData) return;
+
+  try {
+    const participants = await liveData.getGameParticipants();
+    if (!participants?.length) return;
+
+    const myPuuid = summonerInfo?.puuid;
+    const playersData = [];
+
+    for (const p of participants) {
+      const rank = await liveData.getSummonerRank(p.puuid);
+      playersData.push({
+        name: p.name,
+        puuid: p.puuid,
+        rank: rank || null,
+        isMe: p.puuid === myPuuid,
+      });
+    }
+
+    sendToOverlay('lobby-info', playersData);
+  } catch (e) {
+    if (isDev) console.error('로비 정보 조회 실패:', e.message);
   }
 }
 

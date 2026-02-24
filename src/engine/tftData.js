@@ -76,6 +76,11 @@ const SYNERGY_INFO = {};
   };
 });
 
+// ─── 추가 데이터 직접 export ───
+const ROLL_ODDS = TFT_META.rollOdds;
+const STAGE_GUIDE = TFT_META.stageGuide;
+const ITEM_GUIDE = TFT_META.itemGuide;
+
 module.exports = {
   TFT_META,
   META_COMPS,
@@ -85,4 +90,7 @@ module.exports = {
   POSITIONING_GUIDE,
   ECONOMY_GUIDE,
   SYNERGY_INFO,
+  ROLL_ODDS,
+  STAGE_GUIDE,
+  ITEM_GUIDE,
 };

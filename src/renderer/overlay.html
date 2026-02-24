@@ -350,6 +350,130 @@
     }
 
     .hidden { display: none !important; }
+
+    /* 리롤 확률 테이블 */
+    .roll-table { width: 100%; border-collapse: collapse; margin-top: 6px; }
+    .roll-table th, .roll-table td {
+      padding: 4px 3px; text-align: center; font-size: 10px;
+      border: 1px solid rgba(255,255,255,0.06);
+    }
+    .roll-table th { background: rgba(200, 170, 100, 0.12); color: #c8aa64; font-weight: 700; }
+    .roll-table td { color: #ccc; }
+    .roll-table .cost-1 { color: #aaa; }
+    .roll-table .cost-2 { color: #6bcf6b; }
+    .roll-table .cost-3 { color: #5b9bd5; }
+    .roll-table .cost-4 { color: #c679e0; }
+    .roll-table .cost-5 { color: #ffd700; }
+    .roll-table td.high { background: rgba(200, 170, 100, 0.12); font-weight: 700; }
+
+    /* 아이템 가이드 카테고리 */
+    .item-category {
+      margin-bottom: 8px; padding: 8px;
+      background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 6px;
+    }
+    .item-category-title {
+      font-size: 12px; font-weight: 700; margin-bottom: 5px;
+      display: flex; align-items: center; gap: 6px;
+    }
+    .item-category-title.ad { color: #ff6b6b; }
+    .item-category-title.ap { color: #7b68ee; }
+    .item-category-title.tank { color: #4ecdc4; }
+    .item-unit-list, .item-list {
+      display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px;
+    }
+    .item-unit-chip {
+      font-size: 10px; padding: 2px 7px;
+      background: rgba(255,255,255,0.06); border-radius: 3px; color: #ccc;
+    }
+    .item-chip {
+      font-size: 10px; padding: 2px 7px;
+      background: rgba(200, 170, 100, 0.1); border: 1px solid rgba(200, 170, 100, 0.2);
+      border-radius: 3px; color: #c8aa64;
+    }
+
+    /* 게임 플랜 접이식 */
+    .game-plan { margin-top: 6px; }
+    .game-plan-toggle {
+      font-size: 10px; color: #c8aa64; cursor: pointer;
+      padding: 3px 0; user-select: none;
+    }
+    .game-plan-toggle:hover { text-decoration: underline; }
+    .game-plan-body {
+      display: none; padding: 6px 0 0 0;
+    }
+    .game-plan-body.open { display: block; }
+    .game-plan-phase {
+      font-size: 10px; padding: 5px 8px; margin-bottom: 4px;
+      border-left: 2px solid; border-radius: 0 4px 4px 0;
+      background: rgba(255,255,255,0.03);
+    }
+    .phase-early { border-color: #6bcf6b; }
+    .phase-mid { border-color: #ffaa40; }
+    .phase-late { border-color: #ff6b6b; }
+    .phase-label { font-weight: 700; margin-bottom: 2px; }
+    .phase-early .phase-label { color: #6bcf6b; }
+    .phase-mid .phase-label { color: #ffaa40; }
+    .phase-late .phase-label { color: #ff6b6b; }
+
+    /* 난이도 배지 */
+    .diff-badge {
+      display: inline-block; padding: 1px 5px; border-radius: 3px;
+      font-size: 9px; font-weight: 600;
+    }
+    .diff-easy { background: rgba(100, 200, 100, 0.2); color: #80e080; }
+    .diff-medium { background: rgba(255, 170, 64, 0.2); color: #ffaa40; }
+    .diff-hard { background: rgba(255, 80, 80, 0.2); color: #ff6060; }
+
+    /* 풀 조합 유닛 표시 */
+    .full-comp-units {
+      display: flex; flex-wrap: wrap; gap: 3px; margin-top: 4px;
+    }
+    .full-comp-unit {
+      font-size: 9px; padding: 2px 5px;
+      background: rgba(200, 170, 100, 0.08); border: 1px solid rgba(200, 170, 100, 0.15);
+      border-radius: 3px; color: #ddd;
+    }
+
+    /* 핵심 아이템 표시 */
+    .key-items-row {
+      display: flex; gap: 10px; margin-top: 5px; font-size: 10px;
+    }
+    .key-items-group { flex: 1; }
+    .key-items-label { color: #c8aa64; font-weight: 600; margin-bottom: 3px; }
+    .key-items-list { color: #ccc; line-height: 1.5; }
+
+    /* 스테이지 가이드 */
+    .stage-guide-item {
+      padding: 7px; margin-bottom: 5px;
+      background: rgba(255,255,255,0.03); border-radius: 5px;
+      border-left: 2px solid #c8aa64;
+    }
+    .stage-guide-name { font-size: 11px; font-weight: 700; color: #c8aa64; margin-bottom: 3px; }
+    .stage-guide-tip { font-size: 10px; color: #aaa; line-height: 1.5; }
+
+    /* 증강 설명 */
+    .augment-desc { font-size: 9px; color: #888; margin-top: 1px; }
+
+    /* 로비 정보 */
+    #lobby-info {
+      padding: 8px 10px;
+      background: rgba(0,0,0,0.25);
+      border-bottom: 1px solid rgba(255,255,255,0.07);
+    }
+    .lobby-title {
+      font-size: 10px; color: #c8aa64; font-weight: 700;
+      text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px;
+    }
+    .lobby-players { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+    .lobby-player {
+      display: flex; align-items: center; gap: 6px;
+      padding: 4px 6px; background: rgba(255,255,255,0.04);
+      border-radius: 4px; font-size: 10px;
+    }
+    .lobby-player.me { border: 1px solid rgba(200, 170, 100, 0.3); background: rgba(200, 170, 100, 0.08); }
+    .lobby-rank { color: #c8aa64; font-weight: 600; font-size: 9px; }
+    .lobby-name { color: #ccc; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 90px; }
   </style>
 </head>
 <body>
@@ -377,9 +501,16 @@
       <span class="info-chip" id="chip-rank">순위 -</span>
     </div>
 
+    <!-- 로비 정보 -->
+    <div id="lobby-info" class="hidden">
+      <div class="lobby-title">참가자 정보</div>
+      <div class="lobby-players" id="lobby-players"></div>
+    </div>
+
     <!-- 탭 네비게이션 -->
     <div id="tabs">
       <div class="tab active" data-tab="comp">조합</div>
+      <div class="tab" data-tab="item">아이템</div>
       <div class="tab" data-tab="economy">경제</div>
       <div class="tab" data-tab="position">배치</div>
       <div class="tab" data-tab="augment">증강</div>
@@ -411,11 +542,32 @@
         </div>
       </div>
 
+      <!-- 아이템 탭 -->
+      <div class="tab-content" id="tab-item">
+        <div class="section">
+          <div class="section-title">🗡 AD 캐리 아이템</div>
+          <div id="item-ad"></div>
+        </div>
+        <div class="section">
+          <div class="section-title">🔮 AP 캐리 아이템</div>
+          <div id="item-ap"></div>
+        </div>
+        <div class="section">
+          <div class="section-title">🛡 탱커 아이템</div>
+          <div id="item-tank"></div>
+        </div>
+      </div>
+
       <!-- 경제 탭 -->
       <div class="tab-content" id="tab-economy">
         <div class="section">
           <div class="section-title">💰 이자 가이드</div>
           <div class="interest-table" id="interest-table"></div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">🎲 리롤 확률 (레벨별)</div>
+          <div id="roll-odds-content"></div>
         </div>
 
         <div class="section">
@@ -426,6 +578,11 @@
         <div class="section">
           <div class="section-title">📋 운영 방식 가이드</div>
           <div id="economy-type-content"></div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">📍 스테이지 가이드</div>
+          <div id="stage-guide-content"></div>
         </div>
       </div>
 
