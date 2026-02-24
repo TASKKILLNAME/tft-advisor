@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>TFT Advisor</title>
+  <title>TFT Advisor v1.1.0</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -395,7 +395,7 @@
         <h3>TFT 게임을 기다리는 중</h3>
         <p>TFT 게임이 시작되면<br>실시간으로 조언을 제공합니다.</p>
         <br>
-        <p style="color: #666; font-size: 10px;">10초마다 게임 상태 확인 중</p>
+        <p style="color: #666; font-size: 10px;">LCU 연결로 자동 게임 감지 중</p>
       </div>
 
       <!-- 조합 탭 -->
@@ -469,30 +469,54 @@
 
         <div class="section">
           <div class="section-title">⚙ 설정</div>
-          <div style="font-size: 11px; color: #aaa; margin-bottom: 8px;">API 키 (24시간마다 갱신)</div>
-          <input type="text" id="api-key-input" placeholder="RGAPI-..." style="
-            width: 100%; padding: 6px 8px; background: rgba(255,255,255,0.07);
-            border: 1px solid rgba(200, 170, 100, 0.3); border-radius: 4px;
-            color: #e8e0d0; font-size: 11px; margin-bottom: 6px;
-          ">
-          <div style="font-size: 11px; color: #aaa; margin-bottom: 4px;">소환사명 # 태그</div>
-          <div style="display: flex; gap: 4px; margin-bottom: 6px;">
-            <input type="text" id="summoner-input" placeholder="소환사명" style="
-              flex: 2; padding: 6px 8px; background: rgba(255,255,255,0.07);
-              border: 1px solid rgba(200, 170, 100, 0.3); border-radius: 4px;
-              color: #e8e0d0; font-size: 11px;
-            ">
-            <input type="text" id="tagline-input" placeholder="KR1" style="
-              flex: 1; padding: 6px 8px; background: rgba(255,255,255,0.07);
-              border: 1px solid rgba(200, 170, 100, 0.3); border-radius: 4px;
-              color: #e8e0d0; font-size: 11px;
+
+          <!-- LCU 연결 상태 -->
+          <div style="margin-bottom: 10px;">
+            <div style="font-size: 10px; color: #888; text-transform: uppercase; margin-bottom: 4px;">클라이언트 연결</div>
+            <div id="lcu-connection-detail" style="
+              padding: 8px; background: rgba(255,255,255,0.04);
+              border: 1px solid rgba(255,255,255,0.08); border-radius: 5px;
+              font-size: 11px; color: #ccc;
+            ">확인 중...</div>
+          </div>
+
+          <!-- 클라이언트 경로 -->
+          <div style="margin-bottom: 10px;">
+            <div style="font-size: 10px; color: #888; text-transform: uppercase; margin-bottom: 4px;">클라이언트 경로</div>
+            <div style="display: flex; gap: 4px;">
+              <input type="text" id="lcu-path-input" placeholder="자동 감지" readonly style="
+                flex: 1; padding: 6px 8px; background: rgba(255,255,255,0.05);
+                border: 1px solid rgba(200, 170, 100, 0.2); border-radius: 4px;
+                color: #999; font-size: 10px;
+              ">
+              <button id="browse-lcu-path-btn" style="
+                padding: 6px 10px; background: rgba(200, 170, 100, 0.15);
+                border: 1px solid rgba(200, 170, 100, 0.3); border-radius: 4px;
+                color: #c8aa64; font-size: 10px; cursor: pointer; white-space: nowrap;
+              ">변경</button>
+            </div>
+            <div style="font-size: 9px; color: #666; margin-top: 3px;">자동 감지 실패 시 수동으로 LoL 설치 경로를 지정하세요</div>
+          </div>
+
+          <!-- 구분선 -->
+          <div style="border-top: 1px solid rgba(255,255,255,0.06); margin: 10px 0;"></div>
+
+          <!-- 추가 기능: Production API 키 (선택) -->
+          <div style="margin-bottom: 6px;">
+            <div style="font-size: 10px; color: #666; text-transform: uppercase; margin-bottom: 4px;">추가 기능 (선택)</div>
+            <div style="font-size: 9px; color: #555; margin-bottom: 4px;">Production API 키가 있으면 인게임 실시간 분석이 가능합니다</div>
+            <input type="text" id="riot-api-key-input" placeholder="RGAPI-... (선택 사항)" style="
+              width: 100%; padding: 5px 8px; background: rgba(255,255,255,0.04);
+              border: 1px solid rgba(255,255,255,0.08); border-radius: 4px;
+              color: #888; font-size: 10px; margin-bottom: 6px;
             ">
           </div>
+
           <button id="save-settings-btn" style="
             width: 100%; padding: 7px; background: rgba(200, 170, 100, 0.2);
             border: 1px solid rgba(200, 170, 100, 0.5); border-radius: 4px;
             color: #c8aa64; font-size: 12px; cursor: pointer;
-          ">저장 및 적용</button>
+          ">설정 저장</button>
         </div>
       </div>
 

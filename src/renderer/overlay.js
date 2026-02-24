@@ -1,5 +1,5 @@
 const { ipcRenderer } = require('electron');
-const { META_COMPS, AUGMENT_TIERS, ECONOMY_GUIDE } = require('../engine/tftData');
+const { AUGMENT_TIERS, ECONOMY_GUIDE } = require('../engine/tftData');
 const PatchAnalyzer = require('../engine/patchAnalyzer');
 
 const patchAnalyzer = new PatchAnalyzer();
@@ -16,7 +16,6 @@ const tabsEl = document.getElementById('tabs');
 const contentEl = document.getElementById('content');
 
 // --- 마우스 진입/이탈: 오버레이 위에서는 클릭 가능, 벗어나면 게임으로 통과 ---
-// forward:true 옵션 덕분에 mouseleave 상태에서도 마우스 위치 추적 가능
 const appEl = document.getElementById('app');
 
 appEl.addEventListener('mouseenter', () => {
@@ -24,7 +23,6 @@ appEl.addEventListener('mouseenter', () => {
 });
 
 appEl.addEventListener('mouseleave', () => {
-  // input/textarea에 포커스 중이면 게임으로 통과 안 함 (입력 보호)
   const focused = document.activeElement;
   const isTyping = focused && (focused.tagName === 'INPUT' || focused.tagName === 'TEXTAREA');
   if (!isTyping) {
@@ -32,14 +30,12 @@ appEl.addEventListener('mouseleave', () => {
   }
 });
 
-// input에서 포커스 잃으면 다시 통과 허용
 document.addEventListener('blur', (e) => {
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
     ipcRenderer.send('set-ignore-mouse', true);
   }
 }, true);
 
-// 처음 로드 시 클릭 가능 상태로 시작
 ipcRenderer.send('set-ignore-mouse', false);
 
 // --- 탭 전환 ---
@@ -74,26 +70,67 @@ document.getElementById('btn-meta').addEventListener('click', () => {
   document.getElementById('tab-meta').classList.add('active');
 });
 
-// --- 설정 저장 ---
+// --- 설정 저장 (LCU 기반) ---
 document.getElementById('save-settings-btn').addEventListener('click', () => {
-  const apiKey = document.getElementById('api-key-input').value.trim();
-  const summonerName = document.getElementById('summoner-input').value.trim();
-  const tagline = document.getElementById('tagline-input').value.trim() || 'KR1';
+  const riotApiKey = document.getElementById('riot-api-key-input').value.trim();
 
-  if (!apiKey) {
-    updateStatus('API 키를 입력해주세요', 'error');
-    return;
-  }
-  if (!summonerName) {
-    updateStatus('소환사명을 입력해주세요', 'error');
-    return;
-  }
+  ipcRenderer.send('save-config', { riotApiKey });
+  updateStatus('설정이 저장되었습니다', 'success');
+});
 
-  // 단일 IPC로 한번에 저장 (main에서 config.json에 기록)
-  ipcRenderer.send('save-config', { apiKey, summonerName, tagline });
+// --- 클라이언트 경로 선택 ---
+document.getElementById('browse-lcu-path-btn').addEventListener('click', async () => {
+  const result = await ipcRenderer.invoke('select-lcu-path');
+  if (result) {
+    document.getElementById('lcu-path-input').value = result.path;
+    if (result.hasLockfile) {
+      updateStatus('클라이언트 경로 설정됨 — 연결 시도 중...', 'idle');
+    } else {
+      updateStatus('경로 저장됨 — 클라이언트 실행 후 자동 연결됩니다', 'idle');
+    }
+  }
 });
 
 // --- IPC 이벤트 ---
+
+// LCU 연결 상태
+ipcRenderer.on('lcu-status', (event, data) => {
+  const { state, message, summoner } = data;
+
+  switch (state) {
+    case 'disconnected':
+      updateStatus(message, 'error');
+      updateLCUDetail('연결 안 됨 — TFT 클라이언트를 실행해주세요');
+      break;
+    case 'searching':
+      updateStatus(message, 'idle');
+      updateLCUDetail('클라이언트 검색 중...');
+      break;
+    case 'connected':
+      updateStatus(message, 'success');
+      if (summoner) {
+        updateLCUDetail(`연결됨: ${summoner.name}${summoner.tagLine ? '#' + summoner.tagLine : ''} (Lv.${summoner.summonerLevel || '?'})`);
+      } else {
+        updateLCUDetail('연결됨');
+      }
+      break;
+    case 'ingame':
+      updateStatus(message, 'active');
+      break;
+  }
+});
+
+// 랭크 정보
+ipcRenderer.on('rank-info', (event, data) => {
+  if (data) {
+    const detailEl = document.getElementById('lcu-connection-detail');
+    const currentText = detailEl.textContent;
+    const rankStr = `${data.tier || '?'} ${data.division || ''} ${data.leaguePoints || 0}LP`;
+    detailEl.innerHTML = `${currentText}<br><span style="color:#c8aa64;font-size:10px">TFT 랭크: ${rankStr}</span>`;
+  }
+});
+
+// 기존 이벤트 호환
 ipcRenderer.on('status', (event, data) => {
   updateStatus(data.message, data.type);
 });
@@ -121,6 +158,11 @@ function updateStatus(message, type = 'idle') {
 
   dot.className = `status-dot ${type}`;
   text.textContent = message;
+}
+
+function updateLCUDetail(text) {
+  const el = document.getElementById('lcu-connection-detail');
+  if (el) el.textContent = text;
 }
 
 // --- 게임 모드 표시 ---
@@ -172,16 +214,16 @@ function renderCompRecommendation(rec) {
         <span class="tier-badge ${tierClass}">${comp.tier}티어</span>
       </div>
       <div class="comp-detail">
-        <div>🔑 핵심 기물: <span>${comp.keyUnits?.join(', ') || '-'}</span></div>
-        <div>⚡ 시너지: <span>${comp.synergies?.join(', ') || '-'}</span></div>
-        <div>💡 경제: <span>${comp.economy || '-'}</span></div>
+        <div>핵심 기물: <span>${comp.keyUnits?.join(', ') || '-'}</span></div>
+        <div>시너지: <span>${comp.synergies?.join(', ') || '-'}</span></div>
+        <div>경제: <span>${comp.economy || '-'}</span></div>
         <div style="margin-top:5px;color:#ccc">${comp.description || ''}</div>
       </div>
     </div>
   `;
 
   if (rec.reasoning) {
-    html += `<div class="alert info"><span>ℹ</span><span>${rec.reasoning}</span></div>`;
+    html += `<div class="alert info"><span>i</span><span>${rec.reasoning}</span></div>`;
   }
 
   if (rec.alternatives?.length > 0) {
@@ -273,7 +315,7 @@ function renderPositioning(posData) {
   tipEl.innerHTML = `
     <div style="font-size:12px;font-weight:700;color:#c8aa64;margin-bottom:5px">${posData.name}</div>
     <div style="font-size:11px;color:#ccc;margin-bottom:5px">${posData.description}</div>
-    <div class="alert warning"><span>💡</span><span>${posData.tip}</span></div>
+    <div class="alert warning"><span>tip</span><span>${posData.tip}</span></div>
   `;
 
   // 헥스 보드 시각화
@@ -353,7 +395,7 @@ function renderAugments(augData) {
     `).join('');
 
     if (augData.advice) {
-      currentEl.innerHTML += `<div class="alert success" style="margin-top:6px"><span>✓</span><span>${augData.advice}</span></div>`;
+      currentEl.innerHTML += `<div class="alert success" style="margin-top:6px"><span>v</span><span>${augData.advice}</span></div>`;
     }
   } else {
     currentEl.innerHTML = `
@@ -424,27 +466,32 @@ async function init() {
   // 증강 초기 렌더링
   renderAugments({ current: [], advice: '게임 시작 후 증강이 표시됩니다.' });
 
-  // 저장된 설정 불러와서 input에 채우기
+  // LCU 연결 상태 초기 확인
   try {
-    const cfg = await ipcRenderer.invoke('get-config');
-    if (cfg.apiKey) {
-      document.getElementById('api-key-input').value = cfg.apiKey;
-    }
-    if (cfg.summonerName) {
-      document.getElementById('summoner-input').value = cfg.summonerName;
-    }
-    if (cfg.tagline) {
-      document.getElementById('tagline-input').value = cfg.tagline;
-    }
-
-    // 설정이 있으면 연결 중, 없으면 설정 안내
-    if (cfg.apiKey && cfg.summonerName) {
-      updateStatus('저장된 설정으로 연결 중...', 'idle');
+    const lcuState = await ipcRenderer.invoke('get-lcu-state');
+    if (lcuState.state === 'connected' && lcuState.summoner) {
+      updateLCUDetail(`연결됨: ${lcuState.summoner.name}${lcuState.summoner.tagLine ? '#' + lcuState.summoner.tagLine : ''}`);
+      updateStatus(`${lcuState.summoner.name} — ${lcuState.inGame ? '게임 중' : '게임 대기 중'}`, lcuState.inGame ? 'active' : 'success');
+    } else if (lcuState.state === 'searching') {
+      updateStatus('클라이언트 연결 중...', 'idle');
     } else {
-      updateStatus('메타 탭 → 설정에서 API 키와 소환사명을 입력하세요', 'error');
+      updateStatus('TFT 클라이언트를 실행해주세요', 'error');
     }
   } catch (e) {
-    updateStatus('메타 탭 → 설정에서 API 키와 소환사명을 입력하세요', 'error');
+    updateStatus('초기화 중...', 'idle');
+  }
+
+  // 저장된 설정 불러오기
+  try {
+    const cfg = await ipcRenderer.invoke('get-config');
+    if (cfg.lcuPath) {
+      document.getElementById('lcu-path-input').value = cfg.lcuPath;
+    }
+    if (cfg.riotApiKey) {
+      document.getElementById('riot-api-key-input').value = cfg.riotApiKey;
+    }
+  } catch (e) {
+    // 설정 로드 실패 무시
   }
 }
 

@@ -7,13 +7,46 @@ class GameAnalyzer {
   }
 
   async loadSetData() {
-    if (!this.setData) {
+    if (!this.setData && this.riotApi) {
       try {
         this.setData = await this.riotApi.getTFTSetData();
       } catch (e) {
         console.warn('세트 데이터 로드 실패, 로컬 데이터 사용');
       }
     }
+  }
+
+  // LCU 모드: API 데이터 없이 메타 기반 분석 제공
+  getMetaBasedAnalysis() {
+    const topComps = META_COMPS.filter(c => c.tier === 'S' || c.tier === 'A');
+    const recommended = topComps[0];
+    const alternatives = topComps.slice(1, 3);
+
+    return {
+      timestamp: Date.now(),
+      stage: '-',
+      summary: {
+        stage: '-',
+        myHealth: '-',
+        avgHealth: '-',
+        playersAlive: '-',
+        myRank: '-'
+      },
+      augmentAdvice: {
+        current: [],
+        advice: 'S티어 증강을 우선 선택하세요.',
+        nextAugmentTip: '현재 조합과 시너지 있는 증강 선택'
+      },
+      compRecommendation: {
+        recommended,
+        alternatives,
+        reasoning: '현재 패치 메타 기반 추천입니다. 게임 내 상황에 따라 유연하게 대응하세요.'
+      },
+      economyAdvice: this.getEconomyAdvice({}, '2-1'),
+      positioningTip: this.getPositioningTip({ traits: [] }),
+      buyPriority: this.getBuyPriority({ traits: [] }, '2-1'),
+      itemSuggestion: []
+    };
   }
 
   // 현재 활성 게임 분석

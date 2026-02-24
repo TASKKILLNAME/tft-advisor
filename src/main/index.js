@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, screen, Tray, Menu, nativeImage } = require('electron');
+const { app, BrowserWindow, ipcMain, screen, Tray, Menu, nativeImage, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
@@ -6,16 +6,30 @@ const fs = require('fs');
 //  설정 파일 경로: 설치 후에도 유저 폴더에 저장됨
 //  Windows: C:\Users\유저\AppData\Roaming\tft-advisor\config.json
 // ─────────────────────────────────────────────
-let userDataPath = null;   // app.getPath('userData') → app ready 이후에만 사용 가능
+let userDataPath = null;
 let configPath = null;
 
 function getConfig() {
   try {
     if (fs.existsSync(configPath)) {
-      return JSON.parse(fs.readFileSync(configPath, 'utf8'));
+      const raw = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+      // 새 스키마로 마이그레이션
+      return {
+        lcuPath: raw.lcuPath || '',
+        autoDetect: raw.autoDetect !== false,
+        riotApiKey: raw.riotApiKey || raw.apiKey || '',
+        overlayPosition: raw.overlayPosition || { x: null, y: null },
+        overlayOpacity: raw.overlayOpacity || 0.9
+      };
     }
   } catch (e) { /* 무시 */ }
-  return { apiKey: '', summonerName: '', tagline: 'KR1' };
+  return {
+    lcuPath: '',
+    autoDetect: true,
+    riotApiKey: '',
+    overlayPosition: { x: null, y: null },
+    overlayOpacity: 0.9
+  };
 }
 
 function saveConfig(cfg) {
@@ -29,7 +43,9 @@ function saveConfig(cfg) {
 
 // ─────────────────────────────────────────────
 
-const RiotAPI = require('../api/riotApi');
+const LCUClient = require('../api/lcuClient');
+const TFTGameDetector = require('../api/tftGameDetector');
+const TFTLiveData = require('../api/tftLiveData');
 const GameAnalyzer = require('../engine/analyzer/gameAnalyzer');
 const ScreenCapture = require('../engine/screenCapture');
 
@@ -37,16 +53,17 @@ let overlayWindow = null;
 let dashboardWindow = null;
 let tray = null;
 let analyzer = null;
-let riotApi = null;
-let pollInterval = null;
-let summonerPuuid = null;
+let lcuClient = null;
+let gameDetector = null;
+let liveData = null;
+let summonerInfo = null;
 let inGame = false;
 
 const isDev = process.argv.includes('--dev');
 
 function createOverlayWindow() {
   const primaryDisplay = screen.getPrimaryDisplay();
-  const { width, height } = primaryDisplay.workAreaSize;
+  const { width } = primaryDisplay.workAreaSize;
 
   overlayWindow = new BrowserWindow({
     width: 380,
@@ -96,7 +113,6 @@ function createDashboardWindow() {
 }
 
 function createTray() {
-  // 아이콘 파일 경로 (asar 내부)
   const iconPath = path.join(__dirname, '../../assets/icon.ico');
   const icon = fs.existsSync(iconPath)
     ? nativeImage.createFromPath(iconPath)
@@ -125,96 +141,147 @@ function createTray() {
   tray.setContextMenu(contextMenu);
 }
 
-function initApiWithConfig() {
+// ─── LCU 기반 게임 흐름 ──────────────────────
+
+async function initLCU() {
   const cfg = getConfig();
-  riotApi = new RiotAPI(
-    cfg.apiKey || '',
-    'kr',
-    'asia'
-  );
-  analyzer = new GameAnalyzer(riotApi);
 
-  // 소환사 PUUID 캐시 초기화 (설정 변경 시 재조회)
-  summonerPuuid = null;
-  inGame = false;
+  // LCU 클라이언트 생성
+  lcuClient = new LCUClient({
+    lcuPath: cfg.lcuPath || null,
+    autoDetect: cfg.autoDetect
+  });
 
-  return cfg;
+  // GameAnalyzer는 riotApi 없이도 메타 데이터 기반 분석 가능
+  analyzer = new GameAnalyzer(null);
+
+  // LCU 이벤트 핸들러
+  lcuClient.on('state-change', (state) => {
+    switch (state) {
+      case 'searching':
+        sendToOverlay('lcu-status', { state: 'searching', message: '클라이언트 연결 중...' });
+        break;
+      case 'disconnected':
+        sendToOverlay('lcu-status', { state: 'disconnected', message: 'TFT 클라이언트를 실행해주세요' });
+        summonerInfo = null;
+        break;
+      case 'connected':
+        onLCUConnected();
+        break;
+    }
+  });
+
+  lcuClient.on('disconnected', () => {
+    if (inGame) {
+      inGame = false;
+      sendToOverlay('game_end', {});
+    }
+    if (gameDetector) gameDetector.stop();
+    summonerInfo = null;
+  });
+
+  lcuClient.on('error', (err) => {
+    if (isDev) console.error('LCU error:', err.message);
+  });
+
+  // 연결 시작
+  sendToOverlay('lcu-status', { state: 'searching', message: '클라이언트 검색 중...' });
+  await lcuClient.connect();
 }
 
-async function startGamePolling() {
-  pollInterval = setInterval(async () => {
-    // 매 폴링마다 최신 설정을 디스크에서 읽음 (저장 후 즉시 반영)
-    const cfg = getConfig();
+async function onLCUConnected() {
+  // 소환사 정보 자동 조회
+  liveData = new TFTLiveData(lcuClient);
+  summonerInfo = await liveData.getCurrentSummoner();
 
-    // 설정 없으면 안내만
-    if (!cfg.apiKey) {
-      sendToOverlay('status', { message: '메타 탭 → 설정에서 API 키를 입력하세요', type: 'error' });
-      return;
-    }
-    if (!cfg.summonerName) {
-      sendToOverlay('status', { message: '메타 탭 → 설정에서 소환사명을 입력하세요', type: 'error' });
-      return;
-    }
+  if (summonerInfo) {
+    const displayName = summonerInfo.gameName
+      ? `${summonerInfo.gameName}#${summonerInfo.tagLine}`
+      : summonerInfo.displayName || '소환사';
 
-    // API 키가 바뀌었으면 riotApi 키 갱신
-    if (riotApi && riotApi.apiKey !== cfg.apiKey) {
-      riotApi.updateApiKey(cfg.apiKey);
-      summonerPuuid = null; // 키 바뀌면 PUUID 재조회
-    }
-
-    try {
-      // PUUID 아직 없으면 조회
-      if (!summonerPuuid) {
-        try {
-          const accountData = await riotApi.getAccountByRiotId(
-            cfg.summonerName,
-            cfg.tagline || 'KR1'
-          );
-          summonerPuuid = accountData.puuid;
-          sendToOverlay('status', { message: `연결됨: ${cfg.summonerName}#${cfg.tagline}`, type: 'success' });
-        } catch (e) {
-          const status = e.response?.status;
-          if (status === 401 || status === 403) {
-            sendToOverlay('status', { message: 'API 키 오류 — developer.riotgames.com에서 Regenerate 후 다시 입력하세요', type: 'error' });
-          } else if (status === 404) {
-            sendToOverlay('status', { message: `소환사를 찾을 수 없습니다 — 닉네임/태그 확인 (입력값: ${cfg.summonerName}#${cfg.tagline})`, type: 'error' });
-          } else {
-            sendToOverlay('status', { message: `연결 실패 (${status || '네트워크 오류'}) — 잠시 후 재시도합니다`, type: 'error' });
-          }
-          return;
-        }
+    sendToOverlay('lcu-status', {
+      state: 'connected',
+      message: `연결됨: ${displayName}`,
+      summoner: {
+        name: summonerInfo.gameName || summonerInfo.displayName,
+        tagLine: summonerInfo.tagLine || '',
+        puuid: summonerInfo.puuid,
+        profileIconId: summonerInfo.profileIconId,
+        summonerLevel: summonerInfo.summonerLevel
       }
+    });
 
-      // 현재 게임 조회
-      const activeGame = await riotApi.getActiveGame(summonerPuuid);
-
-      if (activeGame && activeGame.gameType === 'MATCHED') {
-        if (!inGame) {
-          inGame = true;
-          sendToOverlay('game_start', { gameId: activeGame.gameId });
-        }
-        const analysis = await analyzer.analyzeActiveGame(activeGame, summonerPuuid);
-        sendToOverlay('update', analysis);
-      } else if (inGame) {
-        inGame = false;
-        sendToOverlay('game_end', {});
-      } else {
-        sendToOverlay('status', { message: `${cfg.summonerName} — 게임 대기 중`, type: 'idle' });
-      }
-
-    } catch (err) {
-      const status = err.response?.status;
-      if (status === 403) {
-        // Spectator API는 Development Key로 접근 불가 (403) → 게임 대기 중으로 처리
-        if (inGame) { inGame = false; sendToOverlay('game_end', {}); }
-        sendToOverlay('status', { message: `${cfg.summonerName} — 게임 대기 중 (Spectator 권한 없음)`, type: 'idle' });
-      } else if (status === 401) {
-        sendToOverlay('status', { message: 'API 키 오류 — developer.riotgames.com에서 Regenerate 후 다시 입력하세요', type: 'error' });
-        summonerPuuid = null;
-      }
-      // 404는 게임 중 아님(정상), 무시
+    // 랭크 정보 조회
+    const rankData = await liveData.getSummonerRank(summonerInfo.puuid);
+    if (rankData) {
+      sendToOverlay('rank-info', rankData);
     }
-  }, 10000);
+  } else {
+    sendToOverlay('lcu-status', {
+      state: 'connected',
+      message: '연결됨 (소환사 정보 조회 중...)'
+    });
+  }
+
+  // 게임 감지 시작
+  gameDetector = new TFTGameDetector(lcuClient);
+
+  gameDetector.on('game-start', (data) => {
+    inGame = true;
+    sendToOverlay('game_start', { gameId: data.session?.gameData?.gameId || 0 });
+
+    // 메타 기반 분석 제공
+    provideMetaAnalysis();
+  });
+
+  gameDetector.on('game-end', () => {
+    inGame = false;
+    liveData.stopPolling();
+    sendToOverlay('game_end', {});
+
+    if (summonerInfo) {
+      const displayName = summonerInfo.gameName
+        ? `${summonerInfo.gameName}#${summonerInfo.tagLine}`
+        : summonerInfo.displayName;
+      sendToOverlay('lcu-status', {
+        state: 'connected',
+        message: `${displayName} — 게임 대기 중`
+      });
+    }
+  });
+
+  gameDetector.on('phase-change', ({ phase }) => {
+    sendToOverlay('phase-change', { phase });
+  });
+
+  await gameDetector.start();
+
+  // 이미 게임 중이면 바로 분석
+  if (gameDetector.isInGame()) {
+    inGame = true;
+    sendToOverlay('game_start', { gameId: 0 });
+    provideMetaAnalysis();
+  } else {
+    const displayName = summonerInfo
+      ? (summonerInfo.gameName ? `${summonerInfo.gameName}#${summonerInfo.tagLine}` : summonerInfo.displayName)
+      : '소환사';
+    sendToOverlay('lcu-status', {
+      state: 'connected',
+      message: `${displayName} — 게임 대기 중`
+    });
+  }
+}
+
+function provideMetaAnalysis() {
+  // LCU에서는 인게임 실시간 필드 데이터 접근이 제한적
+  // → 메타 기반 추천 데이터를 제공
+  const analysis = analyzer.getMetaBasedAnalysis();
+  sendToOverlay('update', analysis);
+
+  sendToOverlay('lcu-status', {
+    state: 'ingame',
+    message: '게임 감지됨 — 메타 기반 분석 중'
+  });
 }
 
 function sendToOverlay(event, data) {
@@ -234,21 +301,68 @@ ipcMain.on('set-ignore-mouse', (event, ignore) => {
   }
 });
 
-// 렌더러가 시작 시 현재 설정값을 요청
 ipcMain.handle('get-config', () => {
   return getConfig();
 });
 
-// 설정 저장 (API 키 + 소환사명 한번에)
-ipcMain.on('save-config', (event, { apiKey, summonerName, tagline }) => {
-  const cfg = { apiKey, summonerName, tagline: tagline || 'KR1' };
+// 설정 저장 (LCU 경로 등)
+ipcMain.on('save-config', (event, newCfg) => {
+  const cfg = getConfig();
+  Object.assign(cfg, newCfg);
   saveConfig(cfg);
 
-  // PUUID 초기화 → 다음 폴링(최대 10초)에 새 설정으로 자동 재시도
-  summonerPuuid = null;
-  inGame = false;
+  // LCU 경로가 변경되었으면 재연결
+  if (newCfg.lcuPath !== undefined && lcuClient) {
+    lcuClient.lcuPath = newCfg.lcuPath || null;
+    lcuClient.disconnect().then(() => lcuClient.connect());
+  }
 
-  sendToOverlay('status', { message: '설정 저장됨 — 10초 내로 연결을 시도합니다', type: 'idle' });
+  sendToOverlay('status', { message: '설정이 저장되었습니다', type: 'success' });
+});
+
+// LCU 클라이언트 경로 직접 선택
+ipcMain.handle('select-lcu-path', async () => {
+  const result = await dialog.showOpenDialog({
+    title: 'League of Legends 설치 폴더 선택',
+    properties: ['openDirectory'],
+    defaultPath: 'C:\\Riot Games\\League of Legends'
+  });
+
+  if (!result.canceled && result.filePaths.length > 0) {
+    const selectedPath = result.filePaths[0];
+    // lockfile 존재 확인
+    const lockfilePath = path.join(selectedPath, 'lockfile');
+    const hasLockfile = fs.existsSync(lockfilePath);
+
+    // 설정에 저장
+    const cfg = getConfig();
+    cfg.lcuPath = selectedPath;
+    saveConfig(cfg);
+
+    // LCU 클라이언트 경로 업데이트
+    if (lcuClient) {
+      lcuClient.lcuPath = selectedPath;
+      if (!lcuClient.isConnected()) {
+        lcuClient.disconnect().then(() => lcuClient.connect());
+      }
+    }
+
+    return { path: selectedPath, hasLockfile };
+  }
+  return null;
+});
+
+// LCU 연결 상태 조회
+ipcMain.handle('get-lcu-state', () => {
+  return {
+    state: lcuClient?.getState() || 'disconnected',
+    summoner: summonerInfo ? {
+      name: summonerInfo.gameName || summonerInfo.displayName,
+      tagLine: summonerInfo.tagLine || '',
+      puuid: summonerInfo.puuid
+    } : null,
+    inGame
+  };
 });
 
 ipcMain.handle('get-screenshot-analysis', async () => {
@@ -259,18 +373,14 @@ ipcMain.handle('get-screenshot-analysis', async () => {
 // ─── 앱 초기화 ───────────────────────────────
 
 app.whenReady().then(() => {
-  // userData 경로 초기화 (app ready 이후에만 가능)
   userDataPath = app.getPath('userData');
   configPath = path.join(userDataPath, 'config.json');
 
-  // 초기 API 객체 생성 (폴링에서 매번 최신 cfg 읽으므로 빈 키로 시작해도 무방)
-  const initCfg = getConfig();
-  riotApi = new RiotAPI(initCfg.apiKey || '', 'kr', 'asia');
-  analyzer = new GameAnalyzer(riotApi);
-
   createOverlayWindow();
   createTray();
-  startGamePolling();
+
+  // LCU 연결 시작 (오버레이 로드 후 약간의 딜레이)
+  setTimeout(() => initLCU(), 1000);
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -281,7 +391,9 @@ app.whenReady().then(() => {
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
-    if (pollInterval) clearInterval(pollInterval);
+    if (lcuClient) lcuClient.destroy();
+    if (gameDetector) gameDetector.stop();
+    if (liveData) liveData.destroy();
     app.quit();
   }
 });
