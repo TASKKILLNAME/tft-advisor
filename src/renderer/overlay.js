@@ -489,7 +489,7 @@ function renderStageGuide() {
   }).join('');
 }
 
-// --- 배치 탭: 4×7 챔피언 아이콘 헥스 보드 ---
+// --- 배치 탭: 4×7 헥사곤 챔피언 아이콘 보드 ---
 function renderPositionHexBoard(positionBoard) {
   const el = document.getElementById('position-hex-board');
   if (!positionBoard || !Array.isArray(positionBoard) || positionBoard.length < 28) {
@@ -498,19 +498,25 @@ function renderPositionHexBoard(positionBoard) {
   }
 
   let html = '<div class="hex-board">';
-  for (let i = 0; i < 28; i++) {
-    const champName = positionBoard[i];
-    if (champName) {
-      const champ = TFT_SET16_CHAMPIONS[champName];
-      if (champ) {
-        const url = getChampionIconUrl(champ.engId);
-        html += `<div class="hex-cell"><img src="${url}" class="cost-${champ.cost}" alt="${champName}" onerror="this.style.display='none'"><span class="hex-name">${champName}</span></div>`;
+  // 4행 × 7열, 짝수행(0-indexed)은 오프셋
+  for (let row = 0; row < 4; row++) {
+    html += `<div class="hex-row">`;
+    for (let col = 0; col < 7; col++) {
+      const idx = row * 7 + col;
+      const champName = positionBoard[idx];
+      if (champName) {
+        const champ = TFT_SET16_CHAMPIONS[champName];
+        if (champ) {
+          const url = getChampionIconUrl(champ.engId);
+          html += `<div class="hex-cell"><img src="${url}" class="cost-${champ.cost}" alt="${champName}" onerror="this.style.display='none'"><span class="hex-name">${champName}</span></div>`;
+        } else {
+          html += `<div class="hex-cell"><span class="hex-name">${champName}</span></div>`;
+        }
       } else {
-        html += `<div class="hex-cell"><span class="hex-name">${champName}</span></div>`;
+        html += `<div class="hex-cell empty"></div>`;
       }
-    } else {
-      html += `<div class="hex-cell empty"></div>`;
     }
+    html += `</div>`;
   }
   html += '</div>';
   html += `<div style="display:flex;gap:8px;margin-top:6px;font-size:9px;color:#888;padding:0 6px">
@@ -594,8 +600,8 @@ function renderHexBoard(posType) {
 
   return `
     <div style="padding:5px">
-      ${layout.map(row => `
-        <div class="hex-row">
+      ${layout.map((row, rowIdx) => `
+        <div class="hex-row"${rowIdx % 2 === 1 ? ' style="margin-left:22px"' : ''}>
           ${row.map(cell => cell
             ? `<div class="hex ${classMap[cell] || ''}">${labelMap[cell] || ''}</div>`
             : `<div class="hex"></div>`

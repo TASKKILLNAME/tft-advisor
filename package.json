@@ -1,6 +1,6 @@
 {
   "name": "tft-advisor",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "TFT 실시간 보조 프로그램 (Vanguard 안전)",
   "main": "src/main/index.js",
   "scripts": {

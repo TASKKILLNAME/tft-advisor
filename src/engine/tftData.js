@@ -1,7 +1,8 @@
-// TFT Set 16: Lore & Legends 메타 데이터 v2
+// TFT Set 16: Lore & Legends 메타 데이터 v2.1
 // src/data/tftMeta.js 에서 원본 데이터를 가져와 기존 인터페이스 유지
 const TFT_META = require('../data/tftMeta');
 const { TFT_SET16_CHAMPIONS, ENG_TO_KOR, getChampionIconUrl, getChampionsByComp } = require('../data/champions');
+const { TFT_SET16_AUGMENTS, getAugmentTier, getAugmentsByStage, isValidAugment, getAllAugmentNames } = require('../data/augments');
 
 // ─── META_COMPS: 전체 조합 리스트 (S/A/B/C 통합) ───
 const META_COMPS = [
@@ -18,13 +19,11 @@ const META_COMPS = [
   economy: comp.leveling || '',
   difficulty: comp.difficulty || '중간',
   description: comp.playstyle || '',
-  // 확장 필드 (v1)
   fullComp: comp.fullComp || null,
   keyItems: comp.keyItems || null,
   earlyGame: comp.earlyGame || null,
   midGame: comp.midGame || null,
   lateGame: comp.lateGame || null,
-  // v2 확장 필드
   compAugments: comp.compAugments || null,
   detailedItems: comp.detailedItems || null,
   positionBoard: comp.positionBoard || null,
@@ -37,7 +36,7 @@ const AUGMENT_TIERS = {
   B: TFT_META.augments.B.map(a => a.nameKr),
 };
 
-// ─── AUGMENT_DATA: 증강 상세 데이터 (설명 포함) ───
+// ─── AUGMENT_DATA: 증강 상세 데이터 ───
 const AUGMENT_DATA = {};
 ['S', 'A', 'B'].forEach(tier => {
   TFT_META.augments[tier].forEach(a => {
@@ -51,38 +50,24 @@ Object.entries(TFT_META.champions).forEach(([cost, units]) => {
   UNIT_COSTS[cost] = units.map(u => u.name);
 });
 
-// ─── POSITIONING_GUIDE: 배치 가이드 ───
+// ─── POSITIONING_GUIDE ───
 const POSITIONING_GUIDE = {};
 Object.entries(TFT_META.positioning.templates).forEach(([key, tmpl]) => {
-  POSITIONING_GUIDE[key] = {
-    name: tmpl.name,
-    description: tmpl.desc,
-    tip: tmpl.tip,
-  };
+  POSITIONING_GUIDE[key] = { name: tmpl.name, description: tmpl.desc, tip: tmpl.tip };
 });
 
-// ─── ECONOMY_GUIDE: 경제 운영 가이드 ───
+// ─── ECONOMY_GUIDE ───
 const ECONOMY_GUIDE = {};
 TFT_META.economy.strategies.forEach(s => {
-  ECONOMY_GUIDE[s.key] = {
-    name: s.name,
-    when: s.when,
-    gold_target: s.desc,
-    timing: s.timing,
-  };
+  ECONOMY_GUIDE[s.key] = { name: s.name, when: s.when, gold_target: s.desc, timing: s.timing };
 });
 
-// ─── SYNERGY_INFO: 시너지 정보 ───
+// ─── SYNERGY_INFO ───
 const SYNERGY_INFO = {};
 [...TFT_META.traits.origins, ...TFT_META.traits.classes].forEach(t => {
-  SYNERGY_INFO[t.name] = {
-    nameEn: t.nameEn,
-    thresholds: t.breakpoints,
-    desc: t.desc,
-  };
+  SYNERGY_INFO[t.name] = { nameEn: t.nameEn, thresholds: t.breakpoints, desc: t.desc };
 });
 
-// ─── 추가 데이터 직접 export ───
 const ROLL_ODDS = TFT_META.rollOdds;
 const STAGE_GUIDE = TFT_META.stageGuide;
 const ITEM_GUIDE = TFT_META.itemGuide;
@@ -99,9 +84,13 @@ module.exports = {
   ROLL_ODDS,
   STAGE_GUIDE,
   ITEM_GUIDE,
-  // v2 챔피언 데이터 exports
   TFT_SET16_CHAMPIONS,
   ENG_TO_KOR,
   getChampionIconUrl,
   getChampionsByComp,
+  TFT_SET16_AUGMENTS,
+  getAugmentTier,
+  getAugmentsByStage,
+  isValidAugment,
+  getAllAugmentNames,
 };

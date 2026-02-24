@@ -76,7 +76,7 @@ function createOverlayWindow() {
     skipTaskbar: true,
     resizable: true,
     movable: true,
-    focusable: true,
+    focusable: false,
     show: false,
     webPreferences: {
       nodeIntegration: true,
@@ -86,7 +86,7 @@ function createOverlayWindow() {
   });
 
   overlayWindow.loadFile(path.join(__dirname, '../renderer/overlay.html'));
-  overlayWindow.setIgnoreMouseEvents(false);
+  overlayWindow.setIgnoreMouseEvents(true, { forward: true });
 
   // ready-to-show 이벤트에서 표시
   overlayWindow.once('ready-to-show', () => {
