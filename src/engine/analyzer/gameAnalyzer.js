@@ -1,4 +1,4 @@
-const { META_COMPS, AUGMENT_TIERS, UNIT_COSTS, POSITIONING_GUIDE, ECONOMY_GUIDE } = require('../tftData');
+const { META_COMPS, AUGMENT_TIERS, AUGMENT_DATA, UNIT_COSTS, POSITIONING_GUIDE, ECONOMY_GUIDE, TFT_META } = require('../tftData');
 
 class GameAnalyzer {
   constructor(riotApi) {
@@ -22,6 +22,15 @@ class GameAnalyzer {
     const recommended = topComps[0];
     const alternatives = topComps.slice(1, 3);
 
+    // 추천 조합의 아이템 정보 포함
+    let itemInfo = '';
+    if (recommended.keyItems) {
+      const carry = recommended.keyItems.carry;
+      if (carry) {
+        itemInfo = `${carry.unit} 아이템: ${carry.items.join(', ')}`;
+      }
+    }
+
     return {
       timestamp: Date.now(),
       stage: '-',
@@ -40,7 +49,9 @@ class GameAnalyzer {
       compRecommendation: {
         recommended,
         alternatives,
-        reasoning: '현재 패치 메타 기반 추천입니다. 게임 내 상황에 따라 유연하게 대응하세요.'
+        reasoning: itemInfo
+          ? `패치 ${TFT_META.version} 메타 추천. ${itemInfo}`
+          : `패치 ${TFT_META.version} 메타 기반 추천입니다.`
       },
       economyAdvice: this.getEconomyAdvice({}, '2-1'),
       positioningTip: this.getPositioningTip({ traits: [] }),
@@ -135,15 +146,11 @@ class GameAnalyzer {
   }
 
   getAugmentSynergy(augName) {
-    const synergyMap = {
-      '마법사의 관': '마법사 조합 강화',
-      '스나이퍼의 초점': '저격수 조합 강화',
-      '선혈 브루저': '브루저 조합 강화',
-      '요들 영혼': '요들 조합 강화',
-      '이자 소득': '경제 운영 보조',
-      '황금 티켓': '경제 운영 보조'
-    };
-    return synergyMap[augName] || '범용';
+    // 새 증강 데이터에서 설명 가져오기
+    if (AUGMENT_DATA && AUGMENT_DATA[augName]) {
+      return AUGMENT_DATA[augName].desc;
+    }
+    return '범용';
   }
 
   recommendComp(participant, stage) {

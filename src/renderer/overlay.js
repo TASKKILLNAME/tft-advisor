@@ -1,5 +1,5 @@
 const { ipcRenderer } = require('electron');
-const { AUGMENT_TIERS, ECONOMY_GUIDE } = require('../engine/tftData');
+const { AUGMENT_TIERS, AUGMENT_DATA, ECONOMY_GUIDE, TFT_META } = require('../engine/tftData');
 const PatchAnalyzer = require('../engine/patchAnalyzer');
 
 const patchAnalyzer = new PatchAnalyzer();
@@ -285,21 +285,24 @@ function renderEconomy(economy) {
     ).join('');
   }
 
-  // 운영 방식 가이드
+  // 운영 방식 가이드 (Set 16: 5가지 전략)
   const typeEl = document.getElementById('economy-type-content');
   const guides = [
-    { key: 'hyperroll', label: '하이퍼롤', color: '#ff8040' },
-    { key: 'slowroll', label: '슬로우롤', color: '#40a0ff' },
-    { key: 'fastlevel', label: '빠른 레벨', color: '#80ff80' }
+    { key: 'slowroll5', color: '#ff6040' },
+    { key: 'slowroll6', color: '#ff8040' },
+    { key: 'slowroll7', color: '#ffaa40' },
+    { key: 'fast8', color: '#40a0ff' },
+    { key: 'fast9', color: '#80ff80' },
   ];
 
   typeEl.innerHTML = guides.map(g => {
     const data = ECONOMY_GUIDE[g.key];
+    if (!data) return '';
     return `
       <div style="margin-bottom:8px;padding:7px;background:rgba(255,255,255,0.03);border-radius:5px;border-left:2px solid ${g.color}">
-        <div style="font-size:11px;font-weight:700;color:${g.color};margin-bottom:3px">${g.label}</div>
-        <div style="font-size:10px;color:#888">언제: ${data.when}</div>
-        <div style="font-size:10px;color:#aaa;margin-top:2px">${data.gold_target}</div>
+        <div style="font-size:11px;font-weight:700;color:${g.color};margin-bottom:3px">${data.name}</div>
+        <div style="font-size:10px;color:#aaa">${data.gold_target}</div>
+        <div style="font-size:10px;color:#888;margin-top:2px">타이밍: ${data.timing} | 조합: ${data.when}</div>
       </div>
     `;
   }).join('');
